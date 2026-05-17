@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "ABTS - Ambulance Booking",
+    "slug": "abts",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.abts.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "ABTS needs your location to find nearby ambulances.",
+        "NSLocationAlwaysUsageDescription": "ABTS uses your location to track the ambulance in real-time."
+      }
+    },
+    "android": {
+      "package": "com.abts.app",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_ANDROID_GOOGLE_MAPS_API_KEY"
+        }
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "name": "ABTS Ambulance",
+      "themeColor": "#C62828",
+      "config": {
+        "googleMapsApiKey": "YOUR_WEB_GOOGLE_MAPS_API_KEY"
+      }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow ABTS to use your location."
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "http://localhost:5000/api",
+      "socketUrl": "http://localhost:5000"
+    }
+  }
+}
