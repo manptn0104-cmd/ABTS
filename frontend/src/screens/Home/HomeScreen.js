@@ -260,61 +260,45 @@ export default function HomeScreen({ navigation }) {
                   key={facility.id}
                   style={[
                     styles.facilityChip,
-                    isSelected && styles.facilityChipSelected
+                    isSelected && styles.facilityChipSelected,
                   ]}
-                  onPress={() => toggleFacility(facility.id)}
-                  activeOpacity={0.7}
+                  onPress={() => {
+                    if (!isSelected) toggleFacility(facility.id);
+                  }}
+                  activeOpacity={isSelected ? 1 : 0.7}
                 >
-                  <MaterialCommunityIcons 
-                    name={facility.icon} 
-                    size={18} 
-                    color={isSelected ? Colors.white : Colors.primary} 
+                  <MaterialCommunityIcons
+                    name={facility.icon}
+                    size={18}
+                    color={isSelected ? Colors.white : Colors.primary}
                   />
-                  <Text style={[
-                    styles.facilityChipText,
-                    isSelected && styles.facilityChipTextSelected
-                  ]}>
+                  <Text
+                    style={[
+                      styles.facilityChipText,
+                      isSelected && styles.facilityChipTextSelected,
+                    ]}
+                  >
                     {facility.label}
                   </Text>
+                  {isSelected && (
+                    <TouchableOpacity
+                      onPress={() => removeFacility(facility.id)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={styles.facilityChipClose}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialCommunityIcons
+                        name="close"
+                        size={16}
+                        color={Colors.white}
+                      />
+                    </TouchableOpacity>
+                  )}
                 </TouchableOpacity>
               );
             })}
           </View>
         </View>
-
-        {/* Selected Facilities Section */}
-        {selectedFacilities.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Selected Facilities</Text>
-            <View style={styles.selectedFacilitiesContainer}>
-              {selectedFacilities.map((facilityId) => {
-                const facility = facilities.find(f => f.id === facilityId);
-                if (!facility) return null;
-                return (
-                  <TouchableOpacity
-                    key={facilityId}
-                    style={styles.selectedFacilityChip}
-                    onPress={() => removeFacility(facilityId)}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialCommunityIcons 
-                      name={facility.icon} 
-                      size={16} 
-                      color={Colors.white} 
-                    />
-                    <Text style={styles.selectedFacilityText}>{facility.label}</Text>
-                    <MaterialCommunityIcons 
-                      name="close" 
-                      size={16} 
-                      color={Colors.white} 
-                      style={styles.removeIcon}
-                    />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        )}
 
         {/* Quick Book Button */}
         <TouchableOpacity style={styles.quickBookBtn} onPress={handleQuickBook} activeOpacity={0.85}>
@@ -552,28 +536,7 @@ const styles = StyleSheet.create({
   facilityChipTextSelected: {
     color: Colors.white,
   },
-  selectedFacilitiesContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.sm,
-    marginTop: Spacing.sm,
-  },
-  selectedFacilityChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-    backgroundColor: Colors.primary,
-    borderRadius: BorderRadius.full,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    ...Shadow.light,
-  },
-  selectedFacilityText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: Colors.white,
-  },
-  removeIcon: {
+  facilityChipClose: {
     marginLeft: Spacing.xs,
   },
 });
