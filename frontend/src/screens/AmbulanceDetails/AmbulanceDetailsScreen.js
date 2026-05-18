@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert,
+  View, Text, StyleSheet, ScrollView, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -10,8 +10,7 @@ import Button         from '../../components/common/Button';
 import Card           from '../../components/common/Card';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../../theme';
-import { getAmbulanceType, formatDistance, formatETA, formatCurrency, getAvailableFacilities } from '../../utils/helpers';
-import { FACILITIES } from '../../utils/constants';
+import { getAmbulanceType, formatDistance, formatETA, formatCurrency } from '../../utils/helpers';
 
 export default function AmbulanceDetailsScreen({ route, navigation }) {
   const { ambulanceId, location } = route.params;
@@ -29,13 +28,6 @@ export default function AmbulanceDetailsScreen({ route, navigation }) {
   }
 
   const typeConfig = getAmbulanceType(ambulance.type);
-  const allFacilities = FACILITIES;
-
-  const toggleFacility = (key) => {
-    setSelectedFacilities((prev) =>
-      prev.includes(key) ? prev.filter((f) => f !== key) : [...prev, key]
-    );
-  };
 
   const handleBook = () => {
     if (!location) {
@@ -43,45 +35,6 @@ export default function AmbulanceDetailsScreen({ route, navigation }) {
       return;
     }
     navigation.navigate('BookingConfirmation', { ambulance, location, selectedFacilities });
-  };
-
-  const FacilityRow = ({ facility }) => {
-    const available = ambulance.facilities?.[facility.key];
-    const isSelected = selectedFacilities.includes(facility.key);
-
-    return (
-     <TouchableOpacity
-  style={[
-    styles.facilityRow,
-    !available && styles.facilityDisabled,
-    isSelected && styles.facilitySelected,
-  ]}
-  onPress={() => available && toggleFacility(facility.key)}
-  disabled={!available}
->
-  <MaterialCommunityIcons
-    name={isSelected ? 'checkbox-marked' : 'checkbox-blank-outline'}
-    size={20}
-    color={
-      !available
-        ? Colors.textMuted
-        : isSelected
-        ? Colors.white
-        : Colors.primary
-    }
-  />
-
-  <Text
-    style={[
-      styles.facilityName,
-      !available && styles.facilityDisabledText,
-      isSelected && styles.facilityNameSelected,
-    ]}
-  >
-    {facility.label}
-  </Text>
-</TouchableOpacity>
-    );
   };
 
   return (
@@ -166,28 +119,6 @@ export default function AmbulanceDetailsScreen({ route, navigation }) {
           </View>
         </Card>
 
-        {/* Safety Features - CCTV Badge */}
-        <View style={styles.cctvBadgeContainer}>
-          <View style={styles.cctvBadge}>
-            <MaterialCommunityIcons name="cctv" size={24} color="#FFFFFF" />
-            <View style={styles.cctvTextContainer}>
-              <Text style={styles.cctvTitle}>CCTV Protected</Text>
-              <Text style={styles.cctvSubtitle}>24/7 Monitoring</Text>
-            </View>
-            <MaterialCommunityIcons name="shield-check" size={20} color="#FFFFFF" />
-          </View>
-        </View>
-
-        {/* Facilities */}
-        <Card shadow="light" style={styles.section}>
-          <Text style={styles.sectionTitle}>Facilities & Equipment</Text>
-          <View style={styles.facilitiesList}>
-            {allFacilities.map((f) => (
-              <FacilityRow key={f.key} facility={f} />
-            ))}
-          </View>
-        </Card>
-
         {/* Pricing */}
         <Card shadow="light" style={styles.section}>
           <Text style={styles.sectionTitle}>Pricing Details</Text>
@@ -259,22 +190,6 @@ const styles = StyleSheet.create({
   tripsChip:    { alignItems: 'center', backgroundColor: Colors.background, borderRadius: BorderRadius.md, padding: Spacing.sm },
   tripsNum:     { fontSize: 18, fontWeight: '800', color: Colors.primary },
   tripsLabel:   { fontSize: 11, color: Colors.textSecondary },
-  facilitiesList: { gap: 8 },
-  facilityRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, padding: Spacing.sm, borderRadius: BorderRadius.sm, backgroundColor: Colors.background },
-  facilityAvailable: { backgroundColor: '#F3F9FF' },
-  facilitySelected: { backgroundColor: Colors.primary, borderWidth: 2, borderColor: Colors.primary },
-  facilityDisabled: {
-  backgroundColor: '#F5F5F5',
-  opacity: 0.5,
-},
-
-facilityDisabledText: {
-  color: Colors.textMuted,
-},
-  facilityName: { flex: 1, fontSize: 14, color: Colors.text },
-  facilityNA:   { color: Colors.textMuted },
-  facilityNameSelected: { color: Colors.white, fontWeight: '700' },
-  facilityCheck:{ marginLeft: 'auto' },
   priceRow:     { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.divider },
   priceLabel:   { fontSize: 14, color: Colors.textSecondary },
   priceValue:   { fontSize: 14, fontWeight: '600', color: Colors.text },
@@ -292,29 +207,4 @@ facilityDisabledText: {
   fareLabel: { fontSize: 12, color: Colors.textSecondary },
   fareValue: { fontSize: 20, fontWeight: '800', color: Colors.primary },
   bookBtn:   { flex: 1, marginLeft: Spacing.lg },
-
-  // CCTV Safety Badge
-  cctvBadgeContainer: { marginBottom: Spacing.md },
-  cctvBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1976D2',
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.md,
-    gap: Spacing.md,
-    ...Shadow.medium,
-  },
-  cctvTextContainer: {
-    flex: 1,
-  },
-  cctvTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.white,
-  },
-  cctvSubtitle: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.9)',
-    marginTop: 2,
-  },
 });
