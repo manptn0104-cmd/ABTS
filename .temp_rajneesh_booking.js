@@ -20,14 +20,14 @@ export default function BookingConfirmationScreen({ route, navigation }) {
 
   const [emergencyType,  setEmergencyType]  = useState('general');
   const [paymentMethod,  setPaymentMethod]  = useState('cash');
-  const [patientDetails, setPatientDetails] = useState({ name: '', age: '', condition: '', bloodGroup: '' });
+  const [patientDetails, setPatientDetails] = useState({ name: '', age: '', condition: '', bloodGroup: 'unknown' });
   const [emergencyContact, setEmergencyContact] = useState({ name: '', phone: '' });
-  const [showConfirmOverlay, setShowConfirmOverlay] = useState(false);
-  const [requiredFacilities, setRequiredFacilities] = useState([]);
-  const [guardianName, setGuardianName] = useState('');
-  const [relation, setRelation] = useState('');
+
+  // Consent states
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [riskAccepted, setRiskAccepted] = useState(false);
+  const [guardianName, setGuardianName] = useState('');
+  const [relation, setRelation] = useState('');
 
   // Pickup location (editable, pre-filled from home screen)
   const [pickupAddress,    setPickupAddress]    = useState(route.params.searchText || '');
@@ -46,11 +46,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   const dropDebounceRef = useRef(null);
 
   const nominatimSearch = useCallback(async (query) => {
-    // Bug #8 fix: bias results near ambulance / pickup coords
-    const biasLat = pickupCoords?.latitude  ?? location?.latitude  ?? 12.9716;
-    const biasLng = pickupCoords?.longitude ?? location?.longitude ?? 77.5946;
-    const viewbox = `${biasLng - 0.5},${biasLat + 0.5},${biasLng + 0.5},${biasLat - 0.5}`;
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=6&countrycodes=in&viewbox=${viewbox}&bounded=0`;
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=6&countrycodes=in`;
     const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
     const data = await res.json();
     return data.map((r) => ({
@@ -60,7 +56,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
       lat: parseFloat(r.lat),
       lng: parseFloat(r.lon),
     }));
-  }, [pickupCoords, location]);
+  }, []);
 
   const fetchPickupSuggestions = useCallback(async (query) => {
     if (!query || query.length < 3) { setPickupSuggestions([]); return; }
@@ -128,6 +124,15 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   }, [booking]);
 
   const doBooking = async () => {
+    // Validate consent
+    if (!consentAccepted || !riskAccepted) {
+      Alert.alert(
+        'Consent Required',
+        'Please accept patient consent and emergency risk terms.'
+      );
+      return;
+    }
+
     const resolvedPickup = pickupCoords || location;
 
     const result = await dispatch(
@@ -138,11 +143,11 @@ export default function BookingConfirmationScreen({ route, navigation }) {
           coordinates: resolvedPickup ? [resolvedPickup.longitude, resolvedPickup.latitude] : [0, 0],
           address: pickupAddress || 'Current Location',
         },
-        // Drop location is fully optional — only include it if coords were resolved from a suggestion
-        dropLocation: (dropCoords && dropAddress)
-          ? { type: 'Point', coordinates: [dropCoords.longitude, dropCoords.latitude], address: dropAddress }
+        dropLocation: dropAddress
+          ? { type: 'Point', coordinates: dropCoords ? [dropCoords.longitude, dropCoords.latitude] : [0, 0], address: dropAddress }
           : undefined,
         emergencyType,
+        requiredFacilities: selectedFacilities,
         patientDetails: {
           name: patientDetails.name,
           age:  patientDetails.age ? parseInt(patientDetails.age) : undefined,
@@ -170,19 +175,22 @@ export default function BookingConfirmationScreen({ route, navigation }) {
     }
   };
 
-  // Cross-platform alert helper
-  const showAlert = (title, msg) => {
-    if (Platform.OS === 'web') { window.alert(`${title}\n\n${msg}`); }
-    else { Alert.alert(title, msg); }
-  };
-
   const handleConfirm = () => {
-    // Consent is still required
-    if (!consentAccepted || !riskAccepted) {
-      showAlert('Consent Required', 'Please scroll to the bottom and accept both the patient consent terms and emergency risk acknowledgement.');
-      return;
+    const locationLabel = pickupAddress.trim() || 'Current GPS Location';
+    if (Platform.OS === 'web') {
+      // Alert buttons are not supported in Expo web — use browser confirm instead
+      const ok = window.confirm(`Confirm Pickup Location\n\nYour pickup location is set to:\n📍 ${locationLabel}\n\nIs this correct?`);
+      if (ok) doBooking();
+    } else {
+      Alert.alert(
+        'Confirm Pickup Location',
+        `Your pickup location is set to:\n\n📍 ${locationLabel}\n\nIs this correct?`,
+        [
+          { text: 'Edit', style: 'cancel' },
+          { text: 'Yes, Confirm', onPress: doBooking },
+        ]
+      );
     }
-    setShowConfirmOverlay(true);
   };
 
   return (
@@ -287,6 +295,26 @@ export default function BookingConfirmationScreen({ route, navigation }) {
           </View>
         </Card>
 
+        {/* Required Facilities */}
+        {selectedFacilities.length > 0 && (
+          <Card shadow="light" style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              <MaterialCommunityIcons name="medical-bag" size={18} color={Colors.primary} /> Required Facilities
+            </Text>
+            <View style={styles.facilityChips}>
+              {selectedFacilities.map((fKey) => {
+                const facility = FACILITIES.find((f) => f.key === fKey);
+                return facility ? (
+                  <View key={fKey} style={styles.facilityChip}>
+                    <MaterialCommunityIcons name={facility.icon} size={14} color={Colors.white} />
+                    <Text style={styles.facilityChipText}>{facility.label}</Text>
+                  </View>
+                ) : null;
+              })}
+            </View>
+          </Card>
+        )}
+
         {/* Patient Details */}
         <Card shadow="light" style={styles.section}>
           <Text style={styles.sectionTitle}>Patient Details (Optional)</Text>
@@ -326,18 +354,24 @@ export default function BookingConfirmationScreen({ route, navigation }) {
             numberOfLines={3}
           />
 
-          {/* Blood Group - Bug #9 fix: no pre-selected 'unknown' */}
-          <Text style={[styles.inputLabel, { marginTop: Spacing.md, marginBottom: 8 }]}>Blood Group (Optional)</Text>
+          {/* Blood Group */}
+          <Text style={[styles.inputLabel, { marginTop: Spacing.md, marginBottom: 8 }]}>Blood Group</Text>
           <View style={styles.bloodGroupGrid}>
-            {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'].map((bg) => (
+            {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((bg) => (
               <TouchableOpacity
                 key={bg}
-                style={[styles.bgChip, patientDetails.bloodGroup === bg.toLowerCase().replace('+','+').replace('-','-') && styles.bgChipActive]}
-                onPress={() => setPatientDetails((p) => ({ ...p, bloodGroup: bg === 'Unknown' ? 'unknown' : bg }))}
+                style={[styles.bgChip, patientDetails.bloodGroup === bg && styles.bgChipActive]}
+                onPress={() => setPatientDetails((p) => ({ ...p, bloodGroup: bg }))}
               >
-                <Text style={[styles.bgChipText, patientDetails.bloodGroup === (bg === 'Unknown' ? 'unknown' : bg) && styles.bgChipTextActive]}>{bg}</Text>
+                <Text style={[styles.bgChipText, patientDetails.bloodGroup === bg && styles.bgChipTextActive]}>{bg}</Text>
               </TouchableOpacity>
             ))}
+            <TouchableOpacity
+              style={[styles.bgChip, patientDetails.bloodGroup === 'unknown' && styles.bgChipActive]}
+              onPress={() => setPatientDetails((p) => ({ ...p, bloodGroup: 'unknown' }))}
+            >
+              <Text style={[styles.bgChipText, patientDetails.bloodGroup === 'unknown' && styles.bgChipTextActive]}>Unknown</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Emergency Contact */}
@@ -412,46 +446,6 @@ export default function BookingConfirmationScreen({ route, navigation }) {
           </View>
         </Card>
 
-        {/* Required Facilities — Bug #6 fix: only show what this ambulance has */}
-        {(() => {
-          const availFacs = FACILITIES.filter((f) => ambulance.facilities?.[f.key]);
-          if (availFacs.length === 0) return null;
-          return (
-            <Card shadow="light" style={styles.section}>
-              <Text style={styles.sectionTitle}>Required Facilities</Text>
-              <Text style={[styles.inputLabel, { marginBottom: 10 }]}>
-                Select any special facilities you need (based on this ambulance's equipment)
-              </Text>
-              <View style={styles.facilityChips}>
-                {availFacs.map((fac) => {
-                  const isSelected = requiredFacilities.includes(fac.key);
-                  return (
-                    <TouchableOpacity
-                      key={fac.key}
-                      style={[
-                        styles.facilityChip,
-                        { backgroundColor: isSelected ? Colors.primary : Colors.background },
-                      ]}
-                      onPress={() => setRequiredFacilities((prev) =>
-                        prev.includes(fac.key) ? prev.filter((k) => k !== fac.key) : [...prev, fac.key]
-                      )}
-                    >
-                      <MaterialCommunityIcons
-                        name={fac.icon}
-                        size={16}
-                        color={isSelected ? Colors.white : Colors.textMuted}
-                      />
-                      <Text style={[styles.facilityChipText, { color: isSelected ? Colors.white : Colors.textSecondary }]}>
-                        {fac.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </Card>
-          );
-        })()}
-
         {/* Payment Method */}
         <Card shadow="light" style={styles.section}>
           <Text style={styles.sectionTitle}>Payment Method</Text>
@@ -490,18 +484,16 @@ export default function BookingConfirmationScreen({ route, navigation }) {
 
         {/* Patient Consent & Risk Acknowledgement */}
         <Card shadow="medium" style={styles.consentCard}>
-          <View style={styles.consentHeader}>
-            <MaterialCommunityIcons name="shield-check" size={22} color={Colors.primary} />
-            <Text style={styles.consentTitle}>Patient Consent & Risk Acknowledgement</Text>
-          </View>
+          <Text style={styles.consentTitle}>
+            Patient Consent & Risk Acknowledgement
+          </Text>
 
           <Text style={styles.consentText}>
-            I understand that ambulance transportation involves risks depending on patient condition,
-            traffic, delays, or medical emergencies.
+            I understand that ambulance transportation and emergency medical services may involve risks depending on patient condition, traffic, delays, or medical emergencies.
           </Text>
+
           <Text style={styles.consentText}>
-            I confirm the patient details provided are correct and accept emergency transportation
-            terms and medical support conditions.
+            I confirm that the patient details provided are correct and I accept emergency transportation risks and medical support conditions.
           </Text>
 
           <TextInput
@@ -509,100 +501,48 @@ export default function BookingConfirmationScreen({ route, navigation }) {
             value={guardianName}
             onChangeText={setGuardianName}
             style={styles.input}
-            placeholderTextColor={Colors.textMuted}
           />
+
           <TextInput
-            placeholder="Relation (Father, Mother, Brother…)"
+            placeholder="Relation (Father, Brother, etc.)"
             value={relation}
             onChangeText={setRelation}
-            style={[styles.input, { marginTop: 8 }]}
-            placeholderTextColor={Colors.textMuted}
+            style={styles.input}
           />
 
           <TouchableOpacity
             style={styles.checkboxRow}
             onPress={() => setConsentAccepted(!consentAccepted)}
-            activeOpacity={0.7}
           >
             <MaterialCommunityIcons
               name={consentAccepted ? 'checkbox-marked' : 'checkbox-blank-outline'}
-              size={26}
-              color={consentAccepted ? Colors.primary : Colors.textMuted}
+              size={24}
+              color={Colors.primary}
             />
+
             <Text style={styles.checkboxText}>
-              I agree to the patient consent terms. <Text style={{ color: Colors.error || '#E53935' }}>*</Text>
+              I agree to patient consent terms.
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.checkboxRow}
             onPress={() => setRiskAccepted(!riskAccepted)}
-            activeOpacity={0.7}
           >
             <MaterialCommunityIcons
               name={riskAccepted ? 'checkbox-marked' : 'checkbox-blank-outline'}
-              size={26}
-              color={riskAccepted ? Colors.primary : Colors.textMuted}
+              size={24}
+              color={Colors.primary}
             />
+
             <Text style={styles.checkboxText}>
-              I understand emergency transportation risks. <Text style={{ color: Colors.error || '#E53935' }}>*</Text>
+              I understand emergency transportation risks.
             </Text>
           </TouchableOpacity>
-
-          {(!consentAccepted || !riskAccepted) && (
-            <Text style={styles.consentWarning}>
-              ⚠️ Both checkboxes must be ticked to confirm booking.
-            </Text>
-          )}
         </Card>
 
         <View style={{ height: 120 }} />
       </ScrollView>
-
-      {/* Confirm Overlay */}
-      {showConfirmOverlay && (
-        <View style={styles.overlayBackdrop}>
-          <View style={styles.overlayCard}>
-            <View style={styles.overlayHeader}>
-              <MaterialCommunityIcons name="map-marker-check" size={28} color={Colors.primary} />
-              <Text style={styles.overlayTitle}>Confirm Pickup Location</Text>
-            </View>
-
-            <View style={styles.overlayLocationBox}>
-              <MaterialCommunityIcons name="map-marker" size={20} color={Colors.primary} />
-              <Text style={styles.overlayLocationText}>
-                {pickupAddress.trim() || 'Current GPS Location'}
-              </Text>
-            </View>
-
-            {pickupCoords && (
-              <Text style={styles.overlayCoords}>
-                {pickupCoords.latitude.toFixed(5)}, {pickupCoords.longitude.toFixed(5)}
-              </Text>
-            )}
-
-            <Text style={styles.overlayQuestion}>Is this the correct pickup location?</Text>
-
-            <View style={styles.overlayActions}>
-              <TouchableOpacity
-                style={styles.overlayEditBtn}
-                onPress={() => setShowConfirmOverlay(false)}
-              >
-                <MaterialCommunityIcons name="pencil" size={16} color={Colors.primary} />
-                <Text style={styles.overlayEditText}>Edit Location</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.overlayConfirmBtn}
-                onPress={() => { setShowConfirmOverlay(false); doBooking(); }}
-              >
-                <MaterialCommunityIcons name="check-circle" size={16} color={Colors.white} />
-                <Text style={styles.overlayConfirmText}>Yes, Confirm</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
 
       {/* Confirm Button */}
       <View style={styles.footer}>
@@ -614,7 +554,6 @@ export default function BookingConfirmationScreen({ route, navigation }) {
           title="Confirm Booking"
           onPress={handleConfirm}
           loading={isCreating}
-          disabled={isCreating}
           size="lg"
           style={styles.confirmBtn}
           icon={<MaterialCommunityIcons name="check-circle" size={20} color={Colors.white} />}
@@ -679,50 +618,6 @@ const styles = StyleSheet.create({
   footerFare:  { fontSize: 20, fontWeight: '800', color: Colors.primary },
   confirmBtn:  { flex: 1, marginLeft: Spacing.lg },
 
-  // Confirm Overlay
-  overlayBackdrop: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center', alignItems: 'center',
-    zIndex: 100, padding: Spacing.lg,
-  },
-  overlayCard: {
-    backgroundColor: Colors.surface || '#fff', borderRadius: 20,
-    padding: Spacing.lg, width: '100%', maxWidth: 400,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2, shadowRadius: 16, elevation: 12,
-  },
-  overlayHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: Spacing.md,
-  },
-  overlayTitle: { fontSize: 18, fontWeight: '800', color: Colors.text },
-  overlayLocationBox: {
-    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
-    backgroundColor: Colors.background || '#F5F5F5', borderRadius: 12,
-    padding: Spacing.md, borderWidth: 1.5, borderColor: Colors.primary,
-  },
-  overlayLocationText: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.text, lineHeight: 20 },
-  overlayCoords: {
-    fontSize: 11, color: Colors.textMuted, textAlign: 'center',
-    marginTop: 6, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  },
-  overlayQuestion: {
-    fontSize: 14, color: Colors.textSecondary, textAlign: 'center',
-    marginTop: Spacing.md, marginBottom: Spacing.md,
-  },
-  overlayActions: { flexDirection: 'row', gap: 10 },
-  overlayEditBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 14, borderRadius: 12,
-    borderWidth: 1.5, borderColor: Colors.primary, backgroundColor: Colors.surface || '#fff',
-  },
-  overlayEditText: { fontSize: 14, fontWeight: '700', color: Colors.primary },
-  overlayConfirmBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 14, borderRadius: 12, backgroundColor: Colors.primary,
-  },
-  overlayConfirmText: { fontSize: 14, fontWeight: '700', color: Colors.white },
-
   // Blood group chips
   bloodGroupGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
   bgChip: {
@@ -766,9 +661,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 12, paddingVertical: 8,
     borderRadius: BorderRadius.full,
-    borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.primary,
   },
-  facilityChipText: { fontSize: 12, fontWeight: '600' },
+  facilityChipText: { fontSize: 12, fontWeight: '600', color: Colors.white },
 
   // Patient Consent
   consentCard: {
@@ -776,44 +671,28 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     marginTop: 20,
-    borderWidth: 1.5,
-    borderColor: Colors.border,
-  },
-  consentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
   },
   consentTitle: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
+    marginBottom: 12,
     color: Colors.text,
-    flex: 1,
   },
   consentText: {
     fontSize: 13,
     color: Colors.textSecondary,
-    marginBottom: 8,
+    marginBottom: 10,
     lineHeight: 20,
   },
   checkboxRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 14,
-    gap: 10,
+    marginTop: 12,
   },
   checkboxText: {
+    marginLeft: 10,
     flex: 1,
     fontSize: 14,
     color: Colors.text,
-    lineHeight: 20,
-  },
-  consentWarning: {
-    fontSize: 12,
-    color: Colors.error || '#E53935',
-    marginTop: 12,
-    fontWeight: '600',
   },
 });
-

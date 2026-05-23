@@ -150,7 +150,7 @@ const seed = async () => {
   });
 
   await Ambulance.create([
-    // â”€â”€ Accident â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Accident ────────────────────────────────────────────────────────────
     {
       vehicleNumber: 'KA01AMB001',
       driverName: 'Ravi Kumar',
@@ -158,7 +158,7 @@ const seed = async () => {
       driverLicense: 'KA0120230001',
       type: 'advanced',
       specializations: ['accident', 'trauma', 'general'],
-      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: false, defibrillator: false, ventilator: false },
+      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: false, defibrillator: false, ventilator: false, cctvCamera: true },
       pricePerKm: 25, basePrice: 500, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.596, 12.97], address: 'Indiranagar, Bangalore' },
       rating: { average: 4.6, count: 28 },
@@ -171,14 +171,14 @@ const seed = async () => {
       driverLicense: 'KA0220230001',
       type: 'basic',
       specializations: ['accident', 'general'],
-      facilities: { oxygen: true, saline: true, stretcher: true, nurse: false, doctor: false, defibrillator: false, ventilator: false },
+      facilities: { oxygen: true, saline: true, stretcher: true, nurse: false, doctor: false, defibrillator: false, ventilator: false, cctvCamera: false },
       pricePerKm: 15, basePrice: 300, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.580, 12.960], address: 'Koramangala, Bangalore' },
       rating: { average: 4.1, count: 12 },
       owner: driver3._id,
     },
 
-    // â”€â”€ Cardiac â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Cardiac ─────────────────────────────────────────────────────────────
     {
       vehicleNumber: 'KA03AMB002',
       driverName: 'Priya Singh',
@@ -186,7 +186,7 @@ const seed = async () => {
       driverLicense: 'KA0320230002',
       type: 'icu',
       specializations: ['cardiac', 'respiratory', 'general'],
-      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: true, defibrillator: true, ventilator: true },
+      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: true, defibrillator: true, ventilator: true, cctvCamera: true },
       pricePerKm: 55, basePrice: 1200, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.696, 12.95], address: 'Whitefield, Bangalore' },
       rating: { average: 4.9, count: 42 },
@@ -199,14 +199,14 @@ const seed = async () => {
       driverLicense: 'KA0420230002',
       type: 'advanced',
       specializations: ['cardiac', 'accident'],
-      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: false, defibrillator: true, ventilator: false },
+      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: false, defibrillator: true, ventilator: false, cctvCamera: true },
       pricePerKm: 35, basePrice: 700, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.640, 12.980], address: 'HAL, Bangalore' },
       rating: { average: 4.5, count: 19 },
       owner: driver4._id,
     },
 
-    // â”€â”€ Respiratory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Respiratory ─────────────────────────────────────────────────────────
     {
       vehicleNumber: 'KA05AMB003',
       driverName: 'Suresh Patil',
@@ -214,7 +214,7 @@ const seed = async () => {
       driverLicense: 'KA0520230003',
       type: 'basic',
       specializations: ['respiratory', 'general'],
-      facilities: { oxygen: true, saline: false, stretcher: true, nurse: false, doctor: false, defibrillator: false, ventilator: false },
+      facilities: { oxygen: true, saline: false, stretcher: true, nurse: false, doctor: false, defibrillator: false, ventilator: false, cctvCamera: false },
       pricePerKm: 15, basePrice: 300, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.5946, 12.9716], address: 'MG Road, Bangalore' },
       rating: { average: 4.2, count: 15 },
@@ -227,14 +227,14 @@ const seed = async () => {
       driverLicense: 'KA0620230003',
       type: 'icu',
       specializations: ['respiratory', 'cardiac'],
-      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: true, defibrillator: false, ventilator: true },
+      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: true, defibrillator: false, ventilator: true, cctvCamera: true },
       pricePerKm: 50, basePrice: 1100, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.622, 12.935], address: 'HSR Layout, Bangalore' },
       rating: { average: 4.7, count: 33 },
       owner: driver6._id,
     },
 
-    // â”€â”€ Trauma â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Trauma ──────────────────────────────────────────────────────────────
     {
       vehicleNumber: 'KA07AMB004',
       driverName: 'Anita Sharma',
@@ -242,7 +242,7 @@ const seed = async () => {
       driverLicense: 'KA0720230004',
       type: 'advanced',
       specializations: ['trauma', 'accident'],
-      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: false, defibrillator: false, ventilator: false },
+      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: false, defibrillator: false, ventilator: false, cctvCamera: true },
       pricePerKm: 30, basePrice: 600, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.5619, 12.9279], address: 'Jayanagar, Bangalore' },
       rating: { average: 4.7, count: 19 },
@@ -255,14 +255,14 @@ const seed = async () => {
       driverLicense: 'KA0820230004',
       type: 'icu',
       specializations: ['trauma', 'accident', 'general'],
-      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: true, defibrillator: true, ventilator: false },
+      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: true, defibrillator: true, ventilator: false, cctvCamera: false },
       pricePerKm: 45, basePrice: 950, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.548, 12.915], address: 'Banashankari, Bangalore' },
       rating: { average: 4.4, count: 24 },
       owner: driver8._id,
     },
 
-    // â”€â”€ Maternity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Maternity ───────────────────────────────────────────────────────────
     {
       vehicleNumber: 'KA09AMB005',
       driverName: 'Meena Iyer',
@@ -270,7 +270,7 @@ const seed = async () => {
       driverLicense: 'KA0920230005',
       type: 'neonatal',
       specializations: ['maternity', 'general'],
-      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: true, defibrillator: false, ventilator: false },
+      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: true, defibrillator: false, ventilator: false, cctvCamera: true },
       pricePerKm: 40, basePrice: 800, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.607, 13.003], address: 'Hebbal, Bangalore' },
       rating: { average: 4.8, count: 31 },
@@ -283,14 +283,14 @@ const seed = async () => {
       driverLicense: 'KA1020230005',
       type: 'neonatal',
       specializations: ['maternity'],
-      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: false, defibrillator: false, ventilator: false },
+      facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: false, defibrillator: false, ventilator: false, cctvCamera: false },
       pricePerKm: 35, basePrice: 750, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.635, 12.913], address: 'BTM Layout, Bangalore' },
       rating: { average: 4.6, count: 17 },
       owner: driver10._id,
     },
 
-    // â”€â”€ General â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── General ─────────────────────────────────────────────────────────────
     {
       vehicleNumber: 'KA11AMB006',
       driverName: 'Vinod Shetty',
@@ -298,7 +298,7 @@ const seed = async () => {
       driverLicense: 'KA1120230006',
       type: 'basic',
       specializations: ['general', 'other'],
-      facilities: { oxygen: false, saline: true, stretcher: true, nurse: false, doctor: false, defibrillator: false, ventilator: false },
+      facilities: { oxygen: false, saline: true, stretcher: true, nurse: false, doctor: false, defibrillator: false, ventilator: false, cctvCamera: false },
       pricePerKm: 12, basePrice: 250, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.572, 12.989], address: 'Rajajinagar, Bangalore' },
       rating: { average: 4.0, count: 8 },

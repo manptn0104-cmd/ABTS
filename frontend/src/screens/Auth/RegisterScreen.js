@@ -50,7 +50,11 @@ export default function RegisterScreen({ navigation }) {
       role: form.role,
     }));
     if (register.rejected.match(result)) {
-      Alert.alert('Registration Failed', result.payload);
+      if (Platform.OS === 'web') {
+        window.alert(`Registration Failed: ${result.payload}`);
+      } else {
+        Alert.alert('Registration Failed', result.payload);
+      }
     }
   };
 

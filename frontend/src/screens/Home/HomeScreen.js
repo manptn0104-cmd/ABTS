@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useDispatch, useSelector } from 'react-redux';
 import { fetchAmbulances } from '../../store/ambulanceSlice';
 import { useLocation } from '../../hooks/useLocation';
@@ -12,7 +13,7 @@ import MapComponent from '../../components/MapComponent';
 import AmbulanceCard from '../../components/AmbulanceCard';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { Colors, Spacing, Shadow, BorderRadius } from '../../theme';
-import { DEFAULT_REGION, EMERGENCY_TYPES } from '../../utils/constants';
+import { DEFAULT_REGION, EMERGENCY_TYPES, FACILITIES } from '../../utils/constants';
 
 export default function HomeScreen({ navigation }) {
   const dispatch = useDispatch();
@@ -25,46 +26,33 @@ export default function HomeScreen({ navigation }) {
   const [suggestions, setSuggestions]       = useState([]);
   const [sugLoading, setSugLoading]         = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isFocused, setIsFocused]           = useState(false);
+  const [manualLocation, setManualLocation] = useState(null); // User-selected location (takes priority over GPS)
   const debounceRef = useRef(null);
   const [mapRegion, setMapRegion]     = useState(DEFAULT_REGION);
   const [showMap, setShowMap]         = useState(true);
   const [selectedFacilities, setSelectedFacilities] = useState([]);
 
-  const facilities = [
-    { id: 'oxygen', label: 'Oxygen', icon: 'lungs' },
-    { id: 'ventilator', label: 'Ventilator', icon: 'hospital-box' },
-    { id: 'nurse', label: 'Nurse', icon: 'stethoscope' },
-    { id: 'doctor', label: 'Doctor', icon: 'doctor' },
-    { id: 'stretcher', label: 'Stretcher', icon: 'bed' },
-    { id: 'defibrillator', label: 'Defibrillator', icon: 'heart-pulse' },
-  ];
-
-  const toggleFacility = (facilityId) => {
-    setSelectedFacilities(prev => 
-      prev.includes(facilityId) 
-        ? prev.filter(id => id !== facilityId)
-        : [...prev, facilityId]
+  const toggleFacility = (id) => {
+    setSelectedFacilities((prev) =>
+      prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]
     );
   };
 
-  const removeFacility = (facilityId) => {
-    setSelectedFacilities(prev => prev.filter(id => id !== facilityId));
-  };
-
-  const buildFacilityFilters = () => {
-    const filters = {};
-    selectedFacilities.forEach(facility => {
-      filters[`facilities.${facility}`] = true;
-    });
-    return filters;
-  };
+  // The effective location: manual selection takes priority over GPS
+  const effectiveLocation = manualLocation || location;
 
   // Fetch address suggestions from Nominatim (OpenStreetMap)
   const fetchSuggestions = useCallback(async (query) => {
     if (!query || query.length < 3) { setSuggestions([]); return; }
     setSugLoading(true);
     try {
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=6&countrycodes=in`;
+      // Bug #8 fix: bias results toward the user's current location
+      const loc = effectiveLocation || { latitude: 12.9716, longitude: 77.5946 };
+      const lat = loc.coords ? loc.coords.latitude  : loc.latitude;
+      const lng = loc.coords ? loc.coords.longitude : loc.longitude;
+      const viewbox = `${lng - 0.5},${lat + 0.5},${lng + 0.5},${lat - 0.5}`;
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=6&countrycodes=in&viewbox=${viewbox}&bounded=0`;
       const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
       const data = await res.json();
       setSuggestions(data.map((r) => ({
@@ -89,43 +77,62 @@ export default function HomeScreen({ navigation }) {
   };
 
   const handleSelectSuggestion = (s) => {
+    const newLoc = { latitude: s.lat, longitude: s.lng };
+    setManualLocation(newLoc); // Lock in the user's choice (GPS won't overwrite this)
     setSearchText(s.shortLabel);
     setSuggestions([]);
     setShowSuggestions(false);
-    const newLoc = { latitude: s.lat, longitude: s.lng };
+    setIsFocused(false);
     setLocation(newLoc);
     setAddress(s.shortLabel);
     setMapRegion({ latitude: s.lat, longitude: s.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 });
+    // Fetch ambulances for the manually selected location
+    dispatch(fetchAmbulances({
+      lat: s.lat, lng: s.lng, maxDistance: 50000, available: 'true', limit: 20,
+      facilities: selectedFacilities.length > 0 ? selectedFacilities.join(',') : undefined,
+    }));
+  };
+
+  const handleUseCurrentLocation = () => {
+    setManualLocation(null); // Clear manual selection so GPS takes over again
+    setShowSuggestions(false);
+    setIsFocused(false);
+    getCurrentLocation();
+  };
+
+  const handleFocus = () => {
+    setIsFocused(true);
+    if (searchText.length >= 3) {
+      setShowSuggestions(true);
+    }
+  };
+
+  const handleBlur = () => {
+    setTimeout(() => {
+      setShowSuggestions(false);
+      setIsFocused(false);
+    }, 200);
   };
 
   // Fetch ambulances on mount immediately with fallback Bangalore coords
   useEffect(() => {
+    const loc = manualLocation || location || { coords: { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude } };
+    const lat = loc.coords ? loc.coords.latitude : loc.latitude;
+    const lng = loc.coords ? loc.coords.longitude : loc.longitude;
+
     dispatch(fetchAmbulances({
-      lat: DEFAULT_REGION.latitude,
-      lng: DEFAULT_REGION.longitude,
+      lat,
+      lng,
       maxDistance: 50000,
       available: 'true',
       limit: 20,
-      ...buildFacilityFilters(),
+      facilities: selectedFacilities.length > 0 ? selectedFacilities.join(',') : undefined,
     }));
-  }, [dispatch]);
+  }, [dispatch, selectedFacilities]);
 
-  // Re-fetch ambulances when facility filters change
+  // Re-fetch with actual GPS when available (only if user hasn't manually selected a location)
   useEffect(() => {
-    const currentLocation = location || { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude };
-    dispatch(fetchAmbulances({
-      lat: currentLocation.latitude,
-      lng: currentLocation.longitude,
-      maxDistance: 50000,
-      available: 'true',
-      limit: 20,
-      ...buildFacilityFilters(),
-    }));
-  }, [selectedFacilities, dispatch]);
-
-  // Re-fetch with actual GPS when available
-  useEffect(() => {
-    if (!location) return;
+    if (!location || manualLocation) return;
     setMapRegion({
       latitude:       location.latitude,
       longitude:      location.longitude,
@@ -138,24 +145,25 @@ export default function HomeScreen({ navigation }) {
       maxDistance: 50000,
       available: 'true',
       limit: 20,
-      ...buildFacilityFilters(),
+      facilities: selectedFacilities.length > 0 ? selectedFacilities.join(',') : undefined,
     }));
-  }, [location, dispatch]);
+  }, [location, dispatch, manualLocation, selectedFacilities]);
 
+  // Sync GPS address to search text (only if user hasn't manually selected)
   useEffect(() => {
-    if (address) setSearchText(address);
-  }, [address]);
+    if (address && !manualLocation) setSearchText(address);
+  }, [address, manualLocation]);
 
   const handleSearch = useCallback(() => {
-    navigation.navigate('AmbulanceList', { location, searchText });
-  }, [navigation, location, searchText]);
+    navigation.navigate('AmbulanceList', { location: effectiveLocation, searchText });
+  }, [navigation, effectiveLocation, searchText]);
 
   const handleQuickBook = () => {
-    navigation.navigate('AmbulanceList', { location: location || { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude }, searchText });
+    navigation.navigate('AmbulanceList', { location: effectiveLocation || { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude }, searchText });
   };
 
   const handleAmbulancePress = (amb) => {
-    navigation.navigate('AmbulanceDetails', { ambulanceId: amb._id, location });
+    navigation.navigate('AmbulanceDetails', { ambulanceId: amb._id, location: effectiveLocation, searchText });
   };
 
   return (
@@ -179,28 +187,28 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.searchWrapper}>
           <View style={[styles.searchBar, Shadow.medium]}>
             <MaterialCommunityIcons name="map-marker" size={20} color={Colors.primary} />
-            <TextInput
+          <TextInput
               style={styles.searchInput}
               value={searchText}
               onChangeText={handleSearchTextChange}
               placeholder="Enter pickup location…"
               placeholderTextColor={Colors.textMuted}
               onSubmitEditing={handleSearch}
-              onFocus={() => searchText.length >= 3 && setShowSuggestions(true)}
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
               returnKeyType="search"
             />
             {sugLoading || locLoading ? (
               <ActivityIndicator size="small" color={Colors.primary} />
             ) : (
-              <TouchableOpacity onPress={getCurrentLocation}>
+              <TouchableOpacity onPress={handleUseCurrentLocation}>
                 <MaterialCommunityIcons name="crosshairs-gps" size={20} color={Colors.secondary} />
               </TouchableOpacity>
             )}
           </View>
 
-          {/* Suggestions dropdown */}
-          {showSuggestions && suggestions.length > 0 && (
+          {/* Dropdown: Suggestions OR History + Current Location */}
+          {(showSuggestions && suggestions.length > 0) ? (
             <View style={[styles.suggestionsBox, Shadow.medium]}>
               {suggestions.map((s, idx) => (
                 <TouchableOpacity
@@ -217,25 +225,24 @@ export default function HomeScreen({ navigation }) {
                 </TouchableOpacity>
               ))}
             </View>
-          )}
+          ) : isFocused && searchText.length < 3 ? (
+            <View style={[styles.suggestionsBox, Shadow.medium]}>
+              {/* Use Current Location */}
+              <TouchableOpacity
+                style={styles.suggestionItem}
+                onPress={handleUseCurrentLocation}
+                activeOpacity={0.7}
+              >
+                <MaterialCommunityIcons name="crosshairs-gps" size={16} color={Colors.secondary} style={styles.suggestionIcon} />
+                <View style={styles.suggestionTexts}>
+                  <Text style={[styles.suggestionShort, { color: Colors.secondary }]}>Use Current Location</Text>
+                  <Text style={styles.suggestionFull}>Detect your GPS location automatically</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
 
-        {/* Emergency type quick selector */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Emergency Type</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeScroll}>
-            {EMERGENCY_TYPES.map((t) => (
-              <TouchableOpacity
-                key={t.value}
-                style={styles.typeChip}
-                onPress={() => navigation.navigate('AmbulanceList', { location, emergencyType: t.value })}
-              >
-                <MaterialCommunityIcons name={t.icon} size={22} color={Colors.primary} />
-                <Text style={styles.typeLabel}>{t.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
 
         {/* CCTV Safety Card */}
         <View style={styles.cctvCardContainer}>
@@ -253,23 +260,21 @@ export default function HomeScreen({ navigation }) {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Facilities & Equipment</Text>
           <View style={styles.facilitiesContainer}>
-            {facilities.map((facility) => {
-              const isSelected = selectedFacilities.includes(facility.id);
+            {FACILITIES.map((facility) => {
+              const isSelected = selectedFacilities.includes(facility.key);
               return (
                 <TouchableOpacity
-                  key={facility.id}
+                  key={facility.key}
                   style={[
                     styles.facilityChip,
                     isSelected && styles.facilityChipSelected,
                   ]}
-                  onPress={() => {
-                    if (!isSelected) toggleFacility(facility.id);
-                  }}
+                  onPress={() => toggleFacility(facility.key)}
                   activeOpacity={isSelected ? 1 : 0.7}
                 >
                   <MaterialCommunityIcons
                     name={facility.icon}
-                    size={18}
+                    size={16}
                     color={isSelected ? Colors.white : Colors.primary}
                   />
                   <Text
@@ -282,22 +287,33 @@ export default function HomeScreen({ navigation }) {
                   </Text>
                   {isSelected && (
                     <TouchableOpacity
-                      onPress={() => removeFacility(facility.id)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      style={styles.facilityChipClose}
-                      activeOpacity={0.7}
+                      style={{ marginLeft: 4 }}
+                      onPress={() => toggleFacility(facility.key)}
                     >
-                      <MaterialCommunityIcons
-                        name="close"
-                        size={16}
-                        color={Colors.white}
-                      />
+                      <MaterialCommunityIcons name="close-circle" size={14} color={Colors.white} />
                     </TouchableOpacity>
                   )}
                 </TouchableOpacity>
               );
             })}
           </View>
+        </View>
+
+        {/* Emergency type quick selector */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Emergency Type</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeScroll}>
+            {EMERGENCY_TYPES.map((t) => (
+              <TouchableOpacity
+                key={t.value}
+                style={styles.typeChip}
+                onPress={() => navigation.navigate('AmbulanceList', { location: effectiveLocation, emergencyType: t.value, searchText })}
+              >
+                <MaterialCommunityIcons name={t.icon} size={22} color={Colors.primary} />
+                <Text style={styles.typeLabel}>{t.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
 
         {/* Quick Book Button */}
@@ -352,6 +368,7 @@ export default function HomeScreen({ navigation }) {
               <TouchableOpacity onPress={() => dispatch(fetchAmbulances({
                 lat: DEFAULT_REGION.latitude, lng: DEFAULT_REGION.longitude,
                 maxDistance: 100000, limit: 20,
+                facilities: selectedFacilities.length > 0 ? selectedFacilities.join(',') : undefined,
               }))}>
                 <Text style={styles.retryText}>Show all ambulances</Text>
               </TouchableOpacity>
@@ -479,8 +496,8 @@ const styles = StyleSheet.create({
   // CCTV Safety Card
   cctvCardContainer: {
     paddingHorizontal: Spacing.lg,
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.lg,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
   cctvCard: {
     flexDirection: 'row',
@@ -501,11 +518,11 @@ const styles = StyleSheet.create({
   },
   cctvCardSubtitle: {
     fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.9)',
+    color: 'rgba(255,255,255,0.8)',
     marginTop: 2,
   },
 
-  // Facilities & Equipment
+  // Facilities
   facilitiesContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -535,8 +552,5 @@ const styles = StyleSheet.create({
   },
   facilityChipTextSelected: {
     color: Colors.white,
-  },
-  facilityChipClose: {
-    marginLeft: Spacing.xs,
   },
 });

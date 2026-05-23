@@ -10,6 +10,7 @@ const ambulanceRoutes = require('./routes/ambulances');
 const bookingRoutes   = require('./routes/bookings');
 const trackingRoutes  = require('./routes/tracking');
 const adminRoutes     = require('./routes/admin');
+const supportRoutes   = require('./routes/support');
 const errorHandler = require('./middleware/errorHandler');
 const supportRoutes = require('./routes/support');
 
@@ -59,7 +60,7 @@ app.use('/api/ambulances', ambulanceRoutes);
 app.use('/api/bookings',   bookingRoutes);
 app.use('/api/tracking',   trackingRoutes);
 app.use('/api/admin',      adminRoutes);
-app.use('/api/support', supportRoutes);
+app.use('/api/support',    supportRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

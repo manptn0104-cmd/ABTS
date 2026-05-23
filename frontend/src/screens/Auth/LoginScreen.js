@@ -145,7 +145,13 @@ export default function LoginScreen({ navigation }) {
                   leftIcon={<MaterialCommunityIcons name="lock-outline" size={20} color={Colors.textMuted} />}
                 />
                 <Button title="Sign In" onPress={handleLogin} loading={isLoading} size="lg" style={styles.btn} />
-                <TouchableOpacity style={styles.forgotBtn}>
+                <TouchableOpacity style={styles.forgotBtn} onPress={() => {
+                  if (Platform.OS === 'web') {
+                    window.alert('Forgot Password\n\nPlease contact support at support@abts.com or use the OTP tab to log in with your phone number.');
+                  } else {
+                    Alert.alert('Forgot Password', 'Please use the OTP tab to log in with your registered phone number, or contact support at support@abts.com.');
+                  }
+                }}>
                   <Text style={styles.forgotText}>Forgot password?</Text>
                 </TouchableOpacity>
               </>

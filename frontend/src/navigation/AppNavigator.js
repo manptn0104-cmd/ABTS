@@ -19,6 +19,7 @@ import LiveTrackingScreen       from '../screens/Tracking/LiveTrackingScreen';
 import ProfileScreen            from '../screens/Profile/ProfileScreen';
 import MyBookingsScreen         from '../screens/Booking/MyBookingsScreen';
 import DriverDashboardScreen    from '../screens/Driver/DriverDashboardScreen';
+import DriverMapScreen          from '../screens/Driver/DriverMapScreen';
 import AdminDashboardScreen     from '../screens/Admin/AdminDashboardScreen';
 import HelpSupportScreen        from '../screens/Help/HelpSupportScreen';
 
@@ -135,6 +136,56 @@ function DriverStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="DriverTabs" component={DriverTabs} />
+      <Stack.Screen name="DriverMap"  component={DriverMapScreen} />
+    </Stack.Navigator>
+  );
+}
+
+// ── Admin Tab Navigator ──────────────────────────────────────────────────────
+function AdminTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor:   Colors.error,
+        tabBarInactiveTintColor: Colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: Colors.surface,
+          borderTopColor:  Colors.border,
+          paddingBottom:   4,
+          height:          60,
+        },
+        tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
+      }}
+    >
+      <Tab.Screen
+        name="AdminHome"
+        component={AdminDashboardScreen}
+        options={{
+          title: 'Admin',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="shield-account" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="AdminProfile"
+        component={ProfileScreen}
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="account-circle" size={size} color={color} />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+}
+
+function AdminStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="AdminTabs" component={AdminTabs} />
     </Stack.Navigator>
   );
 }
@@ -156,7 +207,7 @@ export default function AppNavigator() {
   }
 
   if (!user) return <AuthStack />;
+  if (user.role === 'admin')  return <AdminStack />;
   if (user.role === 'driver') return <DriverStack />;
-  if (user.role === 'admin')  return <AdminDashboardScreen />;
   return <AppStack />;
 }

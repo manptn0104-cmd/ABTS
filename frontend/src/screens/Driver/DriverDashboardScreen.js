@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
+import { useNavigation } from '@react-navigation/native';
 import { Colors, Spacing, BorderRadius, Shadow } from '../../theme';
 import { fetchMyAmbulance } from '../../api/ambulances';
 import { fetchAmbulanceBookings, updateBookingStatus } from '../../api/bookings';
@@ -31,6 +32,7 @@ const STATUS_LABEL = {
 export default function DriverDashboardScreen() {
   const { user } = useSelector((s) => s.auth);
   const { connect, socket } = useSocket();
+  const navigation = useNavigation();
 
   const [ambulance,  setAmbulance]  = useState(null);
   const [bookings,   setBookings]   = useState([]);
@@ -264,6 +266,21 @@ export default function DriverDashboardScreen() {
         <Text style={styles.fareValue}>₹{item.fare?.total?.toFixed(0) || 0}</Text>
       </View>
 
+      {/* Navigate to Pickup button — for active bookings */}
+      {['pending', 'confirmed', 'in_progress'].includes(item.status) && (
+        <TouchableOpacity
+          style={styles.navigateBtn}
+          onPress={() => navigation.navigate('DriverMap', {
+            booking: item,
+            ambulanceLocation: ambulance?.currentLocation,
+          })}
+          activeOpacity={0.75}
+        >
+          <MaterialCommunityIcons name="map-marker-radius" size={16} color={Colors.white} />
+          <Text style={styles.navigateBtnText}>📍 Navigate to Pickup</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Action buttons */}
       {renderActionButtons(item)}
     </View>
@@ -429,4 +446,11 @@ const styles = StyleSheet.create({
   startBtn:    { backgroundColor: Colors.secondary, flex: 0, paddingHorizontal: Spacing.lg },
   completeBtn: { backgroundColor: Colors.accent,    flex: 0, paddingHorizontal: Spacing.lg },
   actionBtnText: { fontSize: 14, fontWeight: '700', color: Colors.white },
+
+  navigateBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: '#1B5E20', borderRadius: BorderRadius.md,
+    paddingVertical: 10, marginTop: 4,
+  },
+  navigateBtnText: { fontSize: 13, fontWeight: '700', color: Colors.white },
 });
