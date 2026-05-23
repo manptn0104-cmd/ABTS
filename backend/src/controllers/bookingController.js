@@ -6,6 +6,8 @@ const { getIO } = require('../services/socketService');
 // POST /api/bookings
 exports.createBooking = async (req, res, next) => {
   try {
+    console.log('REQ BODY:', req.body);
+    
     const {
       ambulanceId,
       pickupLocation,

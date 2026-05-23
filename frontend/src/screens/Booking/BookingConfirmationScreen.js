@@ -130,42 +130,44 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   const doBooking = async () => {
     const resolvedPickup = pickupCoords || location;
 
-    const result = await dispatch(
-      createBooking({
-        ambulanceId: ambulance._id,
-        pickupLocation: {
-          type: 'Point',
-          coordinates: resolvedPickup ? [resolvedPickup.longitude, resolvedPickup.latitude] : [0, 0],
-          address: pickupAddress || 'Current Location',
+    const bookingData = {
+      ambulanceId: ambulance._id,
+      pickupLocation: {
+        type: 'Point',
+        coordinates: resolvedPickup ? [resolvedPickup.longitude, resolvedPickup.latitude] : [0, 0],
+        address: pickupAddress || 'Current Location',
+      },
+      // Drop location is fully optional — only include it if coords were resolved from a suggestion
+      dropLocation: (dropCoords && dropAddress)
+        ? { type: 'Point', coordinates: [dropCoords.longitude, dropCoords.latitude], address: dropAddress }
+        : undefined,
+      emergencyType,
+      patientDetails: {
+        name: patientDetails.name,
+        age:  patientDetails.age ? parseInt(patientDetails.age) : undefined,
+        condition: patientDetails.condition,
+        bloodGroup: patientDetails.bloodGroup,
+        emergencyContact: {
+          name:  emergencyContact.name,
+          phone: emergencyContact.phone,
         },
-        // Drop location is fully optional — only include it if coords were resolved from a suggestion
-        dropLocation: (dropCoords && dropAddress)
-          ? { type: 'Point', coordinates: [dropCoords.longitude, dropCoords.latitude], address: dropAddress }
-          : undefined,
-        emergencyType,
-        patientDetails: {
-          name: patientDetails.name,
-          age:  patientDetails.age ? parseInt(patientDetails.age) : undefined,
-          condition: patientDetails.condition,
-          bloodGroup: patientDetails.bloodGroup,
-          emergencyContact: {
-            name:  emergencyContact.name,
-            phone: emergencyContact.phone,
-          },
-        },
-        estimatedDistance: distanceKm,
-        paymentMethod,
-        patientConsent: {
-          accepted: consentAccepted,
-          acceptedAt: new Date(),
-          guardianName,
-          relation,
-          emergencyRiskAccepted: riskAccepted,
-        },
-      })
-    );
+      },
+      estimatedDistance: distanceKm,
+      paymentMethod,
+      patientConsent: {
+        accepted: consentAccepted,
+        acceptedAt: new Date(),
+        guardianName,
+        relation,
+        emergencyRiskAccepted: riskAccepted,
+      },
+    };
 
-    if (createBooking.rejected.match(result)) {
+    console.log('BOOKING PAYLOAD:', bookingData);
+
+    const result = await dispatch(createBooking(bookingData));
+
+    if (result.type === 'booking/create/rejected') {
       Alert.alert('Booking Failed', result.payload || 'Could not create booking. Please try again.');
     }
   };
@@ -177,6 +179,12 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   };
 
   const handleConfirm = () => {
+    // Validate pickup address is provided
+    if (!pickupAddress || pickupAddress.trim() === '') {
+      showAlert('Pickup Location Required', 'Please enter your current location or select a pickup location.');
+      return;
+    }
+
     // Consent is still required
     if (!consentAccepted || !riskAccepted) {
       showAlert('Consent Required', 'Please scroll to the bottom and accept both the patient consent terms and emergency risk acknowledgement.');

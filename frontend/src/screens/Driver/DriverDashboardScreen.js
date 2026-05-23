@@ -238,10 +238,30 @@ export default function DriverDashboardScreen() {
         </View>
       ) : null}
 
-      {/* Pickup */}
-      <View style={styles.infoRow}>
-        <MaterialCommunityIcons name="map-marker" size={16} color={Colors.primary} />
-        <Text style={styles.infoText} numberOfLines={2}>{item.pickupLocation?.address || 'N/A'}</Text>
+      {/* Current Location */}
+      <View>
+        <Text style={styles.label}>Current Location</Text>
+        <Text style={styles.infoText}>
+          {(() => {
+            console.log('ACTIVE BOOKING:', JSON.stringify(item, null, 2));
+            console.log('Pickup address (item.pickupLocation?.address):', item?.pickupLocation?.address);
+            return (
+              item?.pickup?.address ||
+              item?.pickupLocation?.address ||
+              'Location not available'
+            );
+          })()}
+        </Text>
+      </View>
+
+      {/* Patient Contact */}
+      <View>
+        <Text style={styles.label}>Patient Contact</Text>
+        <Text style={styles.infoText}>
+          {item?.user?.phone ||
+           item?.patientPhone ||
+           'No contact available'}
+        </Text>
       </View>
 
       {/* Drop */}
@@ -249,14 +269,6 @@ export default function DriverDashboardScreen() {
         <View style={styles.infoRow}>
           <MaterialCommunityIcons name="hospital-marker" size={16} color={Colors.success} />
           <Text style={styles.infoText} numberOfLines={1}>{item.dropLocation.address}</Text>
-        </View>
-      ) : null}
-
-      {/* User contact */}
-      {item.user?.phone ? (
-        <View style={styles.infoRow}>
-          <MaterialCommunityIcons name="phone" size={16} color={Colors.textSecondary} />
-          <Text style={styles.infoText}>{item.user.phone}</Text>
         </View>
       ) : null}
 
@@ -420,6 +432,7 @@ const styles = StyleSheet.create({
   infoRow:  { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   infoText: { flex: 1, fontSize: 13, color: Colors.text },
   infoLabel:{ fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
+  label:    { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, marginBottom: 4 },
 
   bloodBadge: {
     backgroundColor: '#FFEBEE', borderRadius: BorderRadius.full,

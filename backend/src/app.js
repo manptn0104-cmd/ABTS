@@ -12,7 +12,6 @@ const trackingRoutes  = require('./routes/tracking');
 const adminRoutes     = require('./routes/admin');
 const supportRoutes   = require('./routes/support');
 const errorHandler = require('./middleware/errorHandler');
-const supportRoutes = require('./routes/support');
 
 const app = express();
 
@@ -21,18 +20,20 @@ connectDB();
 
 // Security middleware
 app.use(helmet());
-app.use(cors({
-origin: (origin, callback) => {
-  const allowed = (process.env.FRONTEND_URL || '').split(',').map(u => u.trim());
-  if (!origin || allowed.includes('*') || allowed.includes(origin)) {
-    callback(null, true);
-  } else {
-    callback(new Error(`CORS: origin ${origin} not allowed`));
-  }
-},
-credentials:true,
-}));
-  
+app.use(
+  cors({
+    origin: [
+      'http://localhost:8081',
+      'http://localhost:8082',
+      'http://localhost:8083',
+      'http://localhost:8084',
+      'http://localhost:19006',
+    ],
+    credentials: true,
+  })
+);
+
+app.options('*', cors());
 
 // Rate limiting — global (generous for dev/demo)
 const limiter = rateLimit({
