@@ -25,6 +25,11 @@ export default function AmbulanceCard({ ambulance, onPress, style }) {
           <View style={[styles.typeBadge, { backgroundColor: typeConfig.color }]}>
             <Text style={styles.typeLabel}>{typeConfig.label}</Text>
           </View>
+          {ambulance.isFastestArrival && (
+            <View style={styles.fastestBadge}>
+              <Text style={styles.fastestLabel}>⚡ Fastest Arrival</Text>
+            </View>
+          )}
           <Text style={styles.vehicleNumber}>{ambulance.vehicleNumber}</Text>
         </View>
 
@@ -60,6 +65,28 @@ export default function AmbulanceCard({ ambulance, onPress, style }) {
             <MaterialCommunityIcons name="currency-inr" size={16} color={Colors.success} />
             <Text style={styles.infoText}>{formatCurrency(ambulance.basePrice)} base</Text>
           </View>
+        </View>
+      )}
+
+      {/* Real-Time Traffic & Driver Status */}
+      {(ambulance.trafficLevel || ambulance.motionStatus) && (
+        <View style={styles.statusInfoRow}>
+          {ambulance.trafficLabel ? (
+            <View style={styles.statusBadgeItem}>
+              <Text style={styles.statusBadgeText}>{ambulance.trafficLabel}</Text>
+            </View>
+          ) : null}
+          {ambulance.motionLabel ? (
+            <View style={styles.statusBadgeItem}>
+              <Text style={styles.statusBadgeText}>{ambulance.motionLabel}</Text>
+            </View>
+          ) : null}
+          {ambulance.currentSpeed !== undefined && ambulance.currentSpeed > 0 ? (
+            <View style={styles.speedBadge}>
+              <MaterialCommunityIcons name="speedometer" size={12} color={Colors.textSecondary} />
+              <Text style={styles.speedText}>{ambulance.currentSpeed} km/h</Text>
+            </View>
+          ) : null}
         </View>
       )}
 
@@ -160,4 +187,58 @@ const styles = StyleSheet.create({
   availDot:  { width: 8, height: 8, borderRadius: 4 },
   availText: { fontSize: 12, fontWeight: '600', flex: 1 },
   bookText:  { fontSize: 12, color: Colors.primary, fontWeight: '600' },
+  fastestBadge: {
+    backgroundColor: '#FFF9C4',
+    borderWidth: 1,
+    borderColor: '#FBC02D',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+    marginLeft: 6,
+  },
+  fastestLabel: {
+    color: '#F57F17',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  statusInfoRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+    backgroundColor: '#F5F7FB',
+    borderRadius: BorderRadius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  statusBadgeItem: {
+    backgroundColor: Colors.white,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 0.5,
+    borderColor: '#E2E8F0',
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  speedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.white,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.sm,
+    borderWidth: 0.5,
+    borderColor: '#E2E8F0',
+  },
+  speedText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
 });

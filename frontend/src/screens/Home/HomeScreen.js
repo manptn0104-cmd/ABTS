@@ -15,6 +15,8 @@ import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { Colors, Spacing, Shadow, BorderRadius } from '../../theme';
 import { DEFAULT_REGION, EMERGENCY_TYPES, FACILITIES } from '../../utils/constants';
 
+import { useSocket } from '../../hooks/useSocket';
+
 export default function HomeScreen({ navigation }) {
   const dispatch = useDispatch();
   const { user }    = useSelector((s) => s.auth);
@@ -32,6 +34,79 @@ export default function HomeScreen({ navigation }) {
   const [mapRegion, setMapRegion]     = useState(DEFAULT_REGION);
   const [showMap, setShowMap]         = useState(true);
   const [selectedFacilities, setSelectedFacilities] = useState([]);
+  const [liveAmbulances, setLiveAmbulances] = useState([]);
+
+  const { connect } = useSocket();
+
+  // Sync with Redux list on load
+  useEffect(() => {
+    if (ambulances && ambulances.length > 0) {
+      console.log('[HomeScreen] Redux ambulances loaded:', ambulances.length, 'ambulances');
+      ambulances.slice(0, 3).forEach((amb, idx) => {
+        console.log(`[Initial Dispatch #${idx + 1}] ${amb.vehicleNumber} | Dist: ${(amb.distanceKm ?? 0).toFixed(2)}km | ETA: ${amb.estimatedArrivalMin ?? '?'}min | Rank: ${(amb.smartRankScore ?? 0).toFixed(2)}`);
+      });
+      setLiveAmbulances(ambulances);
+    }
+  }, [ambulances]);
+
+  // Subscribe to real-time socket updates for all nearby ambulances
+  useEffect(() => {
+    let activeSocket = null;
+    const initSocket = async () => {
+      const sock = await connect();
+      if (!sock) return;
+      activeSocket = sock;
+
+      sock.on('nearby_ambulances_update', (data) => {
+        if (data && data.ambulances) {
+          console.log('[Socket Live Update] Received real-time ambulance updates:', data.ambulances.length, 'ambulances');
+
+          let filtered = data.ambulances;
+          
+          if (selectedFacilities.length > 0) {
+            filtered = filtered.filter(amb => 
+              selectedFacilities.every(f => amb.facilities?.[f])
+            );
+          }
+
+          // Sort by smart ranking score ascending
+          filtered.sort((a, b) => (a.smartRankScore || Infinity) - (b.smartRankScore || Infinity));
+
+          // Debug: Log top 3 ambulances
+          filtered.slice(0, 3).forEach((amb, idx) => {
+            console.log(`[Live Dispatch #${idx + 1}] ${amb.vehicleNumber} | Dist: ${(amb.distanceKm ?? 0).toFixed(2)}km | ETA: ${amb.estimatedArrivalMin ?? '?'}min | Speed: ${amb.currentSpeed ?? 0}km/h | Traffic: ${amb.trafficLabel || 'N/A'} | Motion: ${amb.motionLabel || 'N/A'} | Rank Score: ${(amb.smartRankScore ?? 0).toFixed(2)}`);
+          });
+
+          // Set the fastest flag dynamically
+          if (filtered.length > 0) {
+            let fastestIdx = 0;
+            for (let i = 1; i < filtered.length; i++) {
+              if ((filtered[i].estimatedArrivalMin || Infinity) < (filtered[fastestIdx].estimatedArrivalMin || Infinity)) {
+                fastestIdx = i;
+              }
+            }
+            filtered = filtered.map((amb, idx) => ({
+              ...amb,
+              isFastestArrival: idx === fastestIdx,
+            }));
+            if (filtered[fastestIdx]) {
+              console.log(`[Fastest Arrival] ${filtered[fastestIdx].vehicleNumber} with ${filtered[fastestIdx].estimatedArrivalMin}min ETA`);
+            }
+          }
+
+          setLiveAmbulances(filtered);
+        }
+      });
+    };
+
+    initSocket();
+
+    return () => {
+      if (activeSocket) {
+        activeSocket.off('nearby_ambulances_update');
+      }
+    };
+  }, [connect, selectedFacilities]);
 
   const toggleFacility = (id) => {
     setSelectedFacilities((prev) =>
@@ -347,7 +422,7 @@ export default function HomeScreen({ navigation }) {
                 <MapComponent
                   region={mapRegion}
                   userLocation={location}
-                  ambulances={ambulances}
+                  ambulances={liveAmbulances}
                   onAmbulancePress={handleAmbulancePress}
                   style={styles.map}
                 />
@@ -358,41 +433,41 @@ export default function HomeScreen({ navigation }) {
 
         {/* Nearby ambulance list */}
         <View style={styles.section}>
-          {!showMap && <Text style={styles.sectionTitle}>Available Ambulances</Text>}
-          {isLoading ? (
-            <LoadingSpinner message="Finding ambulances near you…" />
-          ) : ambulances.length === 0 ? (
-            <View style={styles.emptyBox}>
-              <Text style={styles.emptyEmoji}>🔍</Text>
-              <Text style={styles.emptyText}>No ambulances found nearby</Text>
-              <TouchableOpacity onPress={() => dispatch(fetchAmbulances({
-                lat: DEFAULT_REGION.latitude, lng: DEFAULT_REGION.longitude,
-                maxDistance: 100000, limit: 20,
-                facilities: selectedFacilities.length > 0 ? selectedFacilities.join(',') : undefined,
-              }))}>
-                <Text style={styles.retryText}>Show all ambulances</Text>
+        {!showMap && <Text style={styles.sectionTitle}>Available Ambulances</Text>}
+        {isLoading ? (
+          <LoadingSpinner message="Finding ambulances near you…" />
+        ) : liveAmbulances.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyEmoji}>🔍</Text>
+            <Text style={styles.emptyText}>No ambulances found nearby</Text>
+            <TouchableOpacity onPress={() => dispatch(fetchAmbulances({
+              lat: DEFAULT_REGION.latitude, lng: DEFAULT_REGION.longitude,
+              maxDistance: 100000, limit: 20,
+              facilities: selectedFacilities.length > 0 ? selectedFacilities.join(',') : undefined,
+            }))}>
+              <Text style={styles.retryText}>Show all ambulances</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            {liveAmbulances.slice(0, 3).map((amb) => (
+              <AmbulanceCard
+                key={amb._id}
+                ambulance={amb}
+                onPress={() => handleAmbulancePress(amb)}
+              />
+            ))}
+            {liveAmbulances.length > 3 && (
+              <TouchableOpacity
+                style={styles.viewAllBtn}
+                onPress={() => navigation.navigate('AmbulanceList', { location })}
+              >
+                <Text style={styles.viewAllText}>View all {liveAmbulances.length} ambulances →</Text>
               </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              {ambulances.slice(0, 3).map((amb) => (
-                <AmbulanceCard
-                  key={amb._id}
-                  ambulance={amb}
-                  onPress={() => handleAmbulancePress(amb)}
-                />
-              ))}
-              {ambulances.length > 3 && (
-                <TouchableOpacity
-                  style={styles.viewAllBtn}
-                  onPress={() => navigation.navigate('AmbulanceList', { location })}
-                >
-                  <Text style={styles.viewAllText}>View all {ambulances.length} ambulances →</Text>
-                </TouchableOpacity>
-              )}
-            </>
-          )}
-        </View>
+            )}
+          </>
+        )}
+      </View>
 
         <View style={{ height: 24 }} />
       </ScrollView>

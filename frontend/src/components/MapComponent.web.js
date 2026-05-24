@@ -34,11 +34,42 @@ const MAP_HTML = `<!DOCTYPE html>
 
     function updateRoute(){
       if(!userMarker||!ambMarker) return;
-      var pts=[ambMarker.getLatLng(),userMarker.getLatLng()];
-      if(!routeLine){
-        routeLine=L.polyline(pts,{color:'#3B82F6',weight:4,dashArray:'10 6',opacity:.9}).addTo(map);
-      } else { routeLine.setLatLngs(pts); }
-      try{ map.fitBounds(L.latLngBounds(pts),{padding:[50,50],maxZoom:15,animate:true}); }catch(e){}
+      var start = ambMarker.getLatLng();
+      var end = userMarker.getLatLng();
+      var url = 'https://router.project-osrm.org/route/v1/driving/' + start.lng + ',' + start.lat + ';' + end.lng + ',' + end.lat + '?overview=full&geometries=geojson';
+
+      fetch(url)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (data.code === 'Ok' && data.routes && data.routes[0]) {
+            var coords = data.routes[0].geometry.coordinates.map(function(c) {
+              return [c[1], c[0]];
+            });
+            if(!routeLine){
+              routeLine=L.polyline(coords,{color:'#EF4444',weight:5,opacity:.85}).addTo(map);
+            } else {
+              routeLine.setLatLngs(coords);
+              routeLine.setStyle({color:'#EF4444',weight:5,dashArray:null});
+            }
+            try{ map.fitBounds(L.latLngBounds(coords),{padding:[50,50],maxZoom:15,animate:true}); }catch(e){}
+          } else {
+            fallbackRoute();
+          }
+        })
+        .catch(function(e) {
+          fallbackRoute();
+        });
+
+      function fallbackRoute() {
+        var pts = [start, end];
+        if(!routeLine){
+          routeLine=L.polyline(pts,{color:'#3B82F6',weight:4,dashArray:'10 6',opacity:.9}).addTo(map);
+        } else {
+          routeLine.setLatLngs(pts);
+          routeLine.setStyle({color:'#3B82F6',weight:4,dashArray:'10 6'});
+        }
+        try{ map.fitBounds(L.latLngBounds(pts),{padding:[50,50],maxZoom:15,animate:true}); }catch(e){}
+      }
     }
 
     window.addEventListener('message',function(e){
