@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, BorderRadius, Shadow, Spacing } from '../theme';
@@ -6,10 +6,12 @@ import { getAmbulanceType, formatDistance, formatETA, formatCurrency } from '../
 import { FACILITIES } from '../utils/constants';
 
 export default function AmbulanceCard({ ambulance, onPress, style }) {
+  const [expanded, setExpanded] = useState(false);
   const typeConfig    = getAmbulanceType(ambulance.type);
   const distanceKm    = ambulance.distanceKm ?? null;
   const etaMin        = ambulance.estimatedArrivalMin ?? null;
   const availFacilities = FACILITIES.filter((f) => ambulance.facilities?.[f.key]);
+  const visibleFacilities = expanded ? availFacilities : availFacilities.slice(0, 4);
 
   return (
     <TouchableOpacity
@@ -64,14 +66,21 @@ export default function AmbulanceCard({ ambulance, onPress, style }) {
       {/* Facilities */}
       {availFacilities.length > 0 && (
         <View style={styles.facilitiesRow}>
-          {availFacilities.slice(0, 5).map((f) => (
+          {visibleFacilities.map((f) => (
             <View key={f.key} style={styles.facilityChip}>
               <MaterialCommunityIcons name={f.icon} size={12} color={Colors.secondary} />
               <Text style={styles.facilityLabel}>{f.label}</Text>
             </View>
           ))}
-          {availFacilities.length > 5 && (
-            <Text style={styles.moreText}>+{availFacilities.length - 5} more</Text>
+          {availFacilities.length > 4 && (
+            <TouchableOpacity
+              onPress={() => setExpanded(!expanded)}
+              style={{ alignSelf: 'center' }}
+            >
+              <Text style={styles.moreText}>
+                {expanded ? 'Show less' : `+${availFacilities.length - 4} more`}
+              </Text>
+            </TouchableOpacity>
           )}
         </View>
       )}
