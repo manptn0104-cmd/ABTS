@@ -82,6 +82,7 @@ export default function MyBookingsScreen({ navigation }) {
     const statusCfg  = getBookingStatus(item.status);
     const isActive   = ['pending', 'confirmed', 'in_progress'].includes(item.status);
     const isCancellable = ['pending', 'confirmed'].includes(item.status);
+    const isCompleted = item.status === 'completed';
 
     return (
       <TouchableOpacity
@@ -126,7 +127,7 @@ export default function MyBookingsScreen({ navigation }) {
         </View>
 
         {/* Action row */}
-        {(isActive || isCancellable) && (
+        {(isActive || isCancellable || isCompleted) && (
           <View style={styles.actionRow}>
             {isActive && (
               <TouchableOpacity
@@ -174,6 +175,15 @@ export default function MyBookingsScreen({ navigation }) {
                   )}
                 </TouchableOpacity>
               )
+            )}
+            {isCompleted && (
+              <TouchableOpacity
+                style={styles.rateBtn}
+                onPress={() => navigation.navigate('Feedback', { bookingId: item._id })}
+              >
+                <MaterialCommunityIcons name="star" size={14} color={Colors.warning} />
+                <Text style={styles.rateText}>Rate Service</Text>
+              </TouchableOpacity>
             )}
           </View>
         )}
@@ -269,9 +279,11 @@ const styles = StyleSheet.create({
   fareText:    { fontSize: 14, fontWeight: '700', color: Colors.primary },
   trackRow:    { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: Spacing.sm, backgroundColor: '#E3F2FD', borderRadius: 6, padding: 6 },
   trackText:   { fontSize: 12, color: Colors.secondary, fontWeight: '600' },
+  rateText:    { fontSize: 12, color: Colors.warning, fontWeight: '700' },
   actionRow:   { flexDirection: 'row', gap: 8, marginTop: Spacing.sm },
   trackBtn:    { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#E3F2FD', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
   cancelBtn:   { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFEBEE', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: '#FFCDD2', minWidth: 44, justifyContent: 'center' },
+  rateBtn:     { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF8E1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: '#FFECB3' },
   cancelBtnText: { fontSize: 12, color: Colors.error, fontWeight: '700' },
   confirmRow:    { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF3E0', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: '#FFCC80' },
   confirmText:   { flex: 1, fontSize: 12, color: '#E65100', fontWeight: '600' },

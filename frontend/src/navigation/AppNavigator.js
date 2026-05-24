@@ -22,6 +22,7 @@ import DriverDashboardScreen    from '../screens/Driver/DriverDashboardScreen';
 import DriverMapScreen          from '../screens/Driver/DriverMapScreen';
 import AdminDashboardScreen     from '../screens/Admin/AdminDashboardScreen';
 import HelpSupportScreen        from '../screens/Help/HelpSupportScreen';
+import FeedbackScreen          from '../screens/Feedback/FeedbackScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab   = createBottomTabNavigator();
@@ -86,6 +87,7 @@ function AppStack() {
       <Stack.Screen name="AmbulanceDetails"    component={AmbulanceDetailsScreen} options={{ title: 'Ambulance Details' }} />
       <Stack.Screen name="BookingConfirmation" component={BookingConfirmationScreen} options={{ title: 'Booking', headerBackVisible: false }} />
       <Stack.Screen name="LiveTracking"        component={LiveTrackingScreen}     options={{ title: 'Live Tracking', headerBackVisible: false }} />
+      <Stack.Screen name="Feedback"            component={FeedbackScreen}         options={{ title: 'Rate Your Experience' }} />
       <Stack.Screen name="HelpSupport"         component={HelpSupportScreen}      options={{ headerShown: false }} />
     </Stack.Navigator>
   );

@@ -79,7 +79,7 @@ export default function LiveTrackingScreen({ route, navigation }) {
       dispatch(updateCurrentStatus(data.status));
       if (data.status === 'completed') {
         Alert.alert('Trip Completed', 'Your ambulance has arrived. Thank you!', [
-          { text: 'Rate Trip', onPress: () => navigation.replace('MyBookings') },
+          { text: 'Rate Trip', onPress: () => navigation.replace('Feedback', { bookingId }) },
           { text: 'Close',     onPress: () => navigation.navigate('MainTabs') },
         ]);
       }
@@ -235,6 +235,17 @@ export default function LiveTrackingScreen({ route, navigation }) {
           />
         )}
 
+        {/* Feedback button — only for completed */}
+        {booking.status === 'completed' && (
+          <TouchableOpacity
+            style={styles.feedbackButton}
+            onPress={() => navigation.navigate('Feedback', { bookingId })}
+          >
+            <MaterialCommunityIcons name="star" size={18} color={Colors.white} />
+            <Text style={styles.feedbackButtonText}>Rate Driver & Give Feedback</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Home button — always visible */}
         <TouchableOpacity
           style={styles.homeBtn}
@@ -312,6 +323,13 @@ const styles = StyleSheet.create({
   timelineLabel:     { fontSize: 10, color: Colors.textMuted, textAlign: 'center' },
   timelineLabelDone: { color: Colors.success, fontWeight: '600' },
   cancelBtn: { marginTop: Spacing.sm },
+  feedbackButton: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, marginTop: Spacing.sm, paddingVertical: 12,
+    borderRadius: BorderRadius.md, backgroundColor: Colors.warning,
+    ...Shadow.medium,
+  },
+  feedbackButtonText: { fontSize: 15, fontWeight: '700', color: Colors.white },
   homeBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, marginTop: Spacing.sm, paddingVertical: 10,
