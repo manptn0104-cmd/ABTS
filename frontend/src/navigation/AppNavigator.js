@@ -20,6 +20,7 @@ import ProfileScreen            from '../screens/Profile/ProfileScreen';
 import MyBookingsScreen         from '../screens/Booking/MyBookingsScreen';
 import DriverDashboardScreen    from '../screens/Driver/DriverDashboardScreen';
 import DriverMapScreen          from '../screens/Driver/DriverMapScreen';
+import ReviewsScreen            from '../screens/Driver/ReviewsScreen';
 import AdminDashboardScreen     from '../screens/Admin/AdminDashboardScreen';
 import HelpSupportScreen        from '../screens/Help/HelpSupportScreen';
 import FeedbackScreen          from '../screens/Feedback/FeedbackScreen';
@@ -117,6 +118,16 @@ function DriverTabs() {
           title: 'Dashboard',
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="view-dashboard" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Reviews"
+        component={ReviewsScreen}
+        options={{
+          title: 'Reviews',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="star" size={size} color={color} />
           ),
         }}
       />

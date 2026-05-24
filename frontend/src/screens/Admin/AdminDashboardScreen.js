@@ -12,7 +12,7 @@ import { logout } from '../../store/authSlice';
 import { Colors, Spacing } from '../../theme';
 import { API_BASE_URL } from '../../utils/constants';
 
-const TABS = ['Overview', 'Bookings', 'Users', 'Ambulances'];
+const TABS = ['Overview', 'Bookings', 'Users', 'Ambulances', 'Reviews'];
 
 const STATUS_COLOR = {
   pending:     '#F57F17',
@@ -658,12 +658,100 @@ function AmbulancesTab() {
   );
 }
 
+// ── Reviews Tab ────────────────────────────────────────────────────────────────
+function ReviewsTab() {
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refresh, setRefresh] = useState(false);
+  const [filter, setFilter] = useState('');
+
+  const RATING_OPTIONS = ['', '5', '4', '3', '2', '1'];
+
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefresh(true); else setLoading(true);
+    try {
+      const q = filter ? `?rating=${filter}` : '';
+      const res = await adminFetch(`/reviews/admin/all${q}`);
+      if (res.success) setReviews(res.data || []);
+    } finally { setLoading(false); setRefresh(false); }
+  }, [filter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <View style={{ flex: 1 }}>
+      {/* Filter chips */}
+      <View style={styles.filterBar}>
+        {RATING_OPTIONS.map((r) => {
+          const isActive = filter === r;
+          return (
+            <TouchableOpacity
+              key={r}
+              style={[
+                styles.filterChip,
+                isActive && { backgroundColor: Colors.primary, borderColor: Colors.primary },
+              ]}
+              onPress={() => setFilter(r)}
+            >
+              <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                {r === '' ? 'All' : `${r} ⭐`}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {loading ? (
+        <View style={styles.center}><ActivityIndicator color={Colors.primary} size="large" /></View>
+      ) : (
+        <FlatList
+          data={reviews}
+          keyExtractor={(rv) => rv._id}
+          refreshControl={<RefreshControl refreshing={refresh} onRefresh={() => load(true)} colors={[Colors.primary]} />}
+          contentContainerStyle={styles.tabContent}
+          ListEmptyComponent={<Text style={styles.emptyText}>No reviews found.</Text>}
+          renderItem={({ item: rv }) => (
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>{rv.userId?.name || 'Unknown User'}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: Colors.primary + '22' }]}>
+                  <Text style={[styles.statusText, { color: Colors.primary }]}>{'⭐ ' + rv.rating}</Text>
+                </View>
+              </View>
+              <Text style={styles.cardSub}>👤 User: {rv.userId?.email}</Text>
+              <Text style={styles.cardSub}>🚑 Driver: {rv.driverId?.name || 'Unknown'}</Text>
+              <Text style={styles.cardSub}>🚗 Ambulance: {rv.ambulanceId?.vehicleNumber || 'Unknown'}</Text>
+              <Text style={styles.cardSub}>📅 {new Date(rv.createdAt).toLocaleString('en-IN')}</Text>
+              
+              {/* Tags */}
+              {rv.tags && rv.tags.length > 0 && (
+                <View style={{ marginVertical: 8, flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+                  {rv.tags.map((tag, idx) => (
+                    <View key={idx} style={[styles.reviewTag]}>
+                      <Text style={styles.reviewTagText}>{tag}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+              
+              {/* Feedback */}
+              {rv.feedback && (
+                <Text style={styles.reviewFeedback}>💬 "{rv.feedback}"</Text>
+              )}
+            </View>
+          )}
+        />
+      )}
+    </View>
+  );
+}
+
 // ── Main Admin Dashboard ───────────────────────────────────────────────────────
 export default function AdminDashboardScreen() {
   const dispatch = useDispatch();
   const [activeTab, setActiveTab] = useState(0);
 
-  const TAB_ICONS = ['view-dashboard', 'clipboard-list', 'account-multiple', 'ambulance'];
+  const TAB_ICONS = ['view-dashboard', 'clipboard-list', 'account-multiple', 'ambulance', 'star-outline'];
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -708,6 +796,7 @@ export default function AdminDashboardScreen() {
         {activeTab === 1 && <BookingsTab />}
         {activeTab === 2 && <UsersTab />}
         {activeTab === 3 && <AmbulancesTab />}
+        {activeTab === 4 && <ReviewsTab />}
       </View>
     </SafeAreaView>
   );
@@ -826,4 +915,9 @@ const styles = StyleSheet.create({
   ambSelectRowActive: { borderColor: Colors.primary, backgroundColor: Colors.primary + '11' },
   ambSelectVehicle:   { fontSize: 14, fontWeight: '700', color: Colors.text },
   ambSelectSub:       { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
+
+  // Review styles
+  reviewTag:    { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 16, backgroundColor: Colors.primary + '22', borderWidth: 1, borderColor: Colors.primary },
+  reviewTagText:{ fontSize: 11, fontWeight: '600', color: Colors.primary },
+  reviewFeedback:{ fontSize: 13, color: Colors.text, fontStyle: 'italic', marginTop: 8, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: Colors.primary },
 });

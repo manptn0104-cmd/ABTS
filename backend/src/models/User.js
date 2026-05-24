@@ -49,6 +49,18 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Driver rating fields
+    averageRating: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 5,
+    },
+    reviewCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   { timestamps: true }
 );

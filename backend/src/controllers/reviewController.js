@@ -69,7 +69,8 @@ exports.createReview = async (req, res, next) => {
       });
     }
 
-    const driverId = ambulance.driver;
+    // Use ambulance.owner as driverId (the driver who owns the ambulance)
+    const driverId = ambulance.owner;
 
     // Create review
     const review = await Review.create({
@@ -185,6 +186,38 @@ exports.getReview = async (req, res, next) => {
   }
 };
 
+// @desc    Get all reviews (Admin only)
+// @route   GET /api/reviews/admin/all
+// @access  Private (admin only)
+exports.getAllReviews = async (req, res, next) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+
+    const reviews = await Review.find()
+      .populate('userId', 'name email')
+      .populate('driverId', 'name email')
+      .populate('ambulanceId', 'vehicleNumber type')
+      .populate('bookingId', 'status createdAt')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    const total = await Review.countDocuments();
+
+    res.status(200).json({
+      success: true,
+      count: reviews.length,
+      total,
+      page,
+      pages: Math.ceil(total / limit),
+      data: reviews
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Helper function to update driver's average rating
 async function updateDriverRating(driverId) {
   const reviews = await Review.find({ driverId });
@@ -214,7 +247,7 @@ async function updateAmbulanceRating(ambulanceId) {
   const averageRating = totalRating / reviews.length;
 
   await Ambulance.findByIdAndUpdate(ambulanceId, {
-    averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal
-    reviewCount: reviews.length
+    'rating.average': Math.round(averageRating * 10) / 10, // Round to 1 decimal
+    'rating.count': reviews.length
   });
 }

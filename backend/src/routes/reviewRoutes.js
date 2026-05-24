@@ -6,8 +6,9 @@ const {
   getDriverReviews,
   getAmbulanceReviews,
   getReview,
+  getAllReviews,
 } = require('../controllers/reviewController');
-const { protect } = require('../middleware/auth');
+const { protect, authorize } = require('../middleware/auth');
 
 // Validation middleware
 const reviewValidation = [
@@ -23,6 +24,7 @@ const reviewValidation = [
 router.post('/', protect, reviewValidation, createReview);
 router.get('/driver/:driverId', getDriverReviews);
 router.get('/ambulance/:ambulanceId', getAmbulanceReviews);
+router.get('/admin/all', protect, authorize('admin'), getAllReviews);
 router.get('/:id', protect, getReview);
 
 module.exports = router;
