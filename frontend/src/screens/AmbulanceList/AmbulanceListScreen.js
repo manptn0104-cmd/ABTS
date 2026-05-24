@@ -14,7 +14,7 @@ import { Colors, Spacing, BorderRadius, Shadow } from '../../theme';
 import { DEFAULT_REGION } from '../../utils/constants';
 
 export default function AmbulanceListScreen({ route, navigation }) {
-  const { location, emergencyType } = route.params || {};
+  const { location, emergencyType, searchText } = route.params || {};
   const dispatch = useDispatch();
   const { list, isLoading, total, filters } = useSelector((s) => s.ambulance);
 
@@ -126,6 +126,7 @@ export default function AmbulanceListScreen({ route, navigation }) {
                 navigation.navigate('AmbulanceDetails', {
                   ambulanceId: item._id,
                   location,
+                  searchText,
                 })
               }
               style={styles.card}

@@ -14,7 +14,7 @@ import { formatCurrency, formatDistance, formatETA, getAmbulanceType, haversineD
 import { EMERGENCY_TYPES, PAYMENT_METHODS, FACILITIES } from '../../utils/constants';
 
 export default function BookingConfirmationScreen({ route, navigation }) {
-  const { ambulance, location, selectedFacilities = [] } = route.params;
+  const { ambulance, location, selectedFacilities = [], searchText = 'Current Location' } = route.params;
   const dispatch = useDispatch();
   const { isCreating, current: booking, error } = useSelector((s) => s.booking);
 
@@ -29,15 +29,11 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [riskAccepted, setRiskAccepted] = useState(false);
 
-  // Pickup location (editable, pre-filled from home screen)
-  const [pickupAddress,    setPickupAddress]    = useState(route.params.searchText || '');
-  const [pickupCoords,     setPickupCoords]     = useState(location || null);
-  const [pickupSuggestions, setPickupSuggestions] = useState([]);
-  const [pickupSugLoading,  setPickupSugLoading]  = useState(false);
-  const [showPickupSug,     setShowPickupSug]     = useState(false);
-  const pickupDebounceRef = useRef(null);
+  // Pickup location (readonly, pre-filled from home screen via navigation params)
+  const pickupAddress = searchText || 'Current Location';
+  const pickupCoords = location || null;
 
-  // Drop location
+  // Drop location (editable)
   const [dropAddress,    setDropAddress]    = useState('');
   const [dropCoords,     setDropCoords]     = useState(null);
   const [dropSuggestions, setDropSuggestions] = useState([]);
@@ -46,9 +42,9 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   const dropDebounceRef = useRef(null);
 
   const nominatimSearch = useCallback(async (query) => {
-    // Bug #8 fix: bias results near ambulance / pickup coords
-    const biasLat = pickupCoords?.latitude  ?? location?.latitude  ?? 12.9716;
-    const biasLng = pickupCoords?.longitude ?? location?.longitude ?? 77.5946;
+    // Bias results near pickup location for better local search
+    const biasLat = pickupCoords?.latitude  ?? 12.9716;
+    const biasLng = pickupCoords?.longitude ?? 77.5946;
     const viewbox = `${biasLng - 0.5},${biasLat + 0.5},${biasLng + 0.5},${biasLat - 0.5}`;
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=6&countrycodes=in&viewbox=${viewbox}&bounded=0`;
     const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
@@ -60,30 +56,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
       lat: parseFloat(r.lat),
       lng: parseFloat(r.lon),
     }));
-  }, [pickupCoords, location]);
-
-  const fetchPickupSuggestions = useCallback(async (query) => {
-    if (!query || query.length < 3) { setPickupSuggestions([]); return; }
-    setPickupSugLoading(true);
-    try { setPickupSuggestions(await nominatimSearch(query)); }
-    catch (_) { setPickupSuggestions([]); }
-    finally { setPickupSugLoading(false); }
-  }, [nominatimSearch]);
-
-  const handlePickupTextChange = (text) => {
-    setPickupAddress(text);
-    setPickupCoords(null); // coords invalidated until user picks suggestion
-    setShowPickupSug(true);
-    clearTimeout(pickupDebounceRef.current);
-    pickupDebounceRef.current = setTimeout(() => fetchPickupSuggestions(text), 400);
-  };
-
-  const handleSelectPickupSuggestion = (s) => {
-    setPickupAddress(s.shortLabel);
-    setPickupCoords({ latitude: s.lat, longitude: s.lng });
-    setPickupSuggestions([]);
-    setShowPickupSug(false);
-  };
+  }, [pickupCoords]);
 
   const fetchDropSuggestions = useCallback(async (query) => {
     if (!query || query.length < 3) { setDropSuggestions([]); return; }
@@ -179,13 +152,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   };
 
   const handleConfirm = () => {
-    // Validate pickup address is provided
-    if (!pickupAddress || pickupAddress.trim() === '') {
-      showAlert('Pickup Location Required', 'Please enter your current location or select a pickup location.');
-      return;
-    }
-
-    // Consent is still required
+    // Consent is required
     if (!consentAccepted || !riskAccepted) {
       showAlert('Consent Required', 'Please scroll to the bottom and accept both the patient consent terms and emergency risk acknowledgement.');
       return;
@@ -229,46 +196,22 @@ export default function BookingConfirmationScreen({ route, navigation }) {
           </View>
         </Card>
 
-        {/* Pickup Location */}
-        <Card shadow="medium" style={[styles.section, { zIndex: 20, overflow: 'visible' }]}>
-          <Text style={styles.sectionTitle}>Pickup Location</Text>
-          <View style={styles.dropWrapper}>
-            <View style={styles.dropInputRow}>
-              <MaterialCommunityIcons name="map-marker" size={18} color={Colors.primary} style={styles.dropIcon} />
-              <TextInput
-                style={styles.dropInput}
-                value={pickupAddress}
-                onChangeText={handlePickupTextChange}
-                placeholder="Enter your pickup address"
-                placeholderTextColor={Colors.textMuted}
-                onFocus={() => pickupAddress.length >= 3 && setShowPickupSug(true)}
-                onBlur={() => setTimeout(() => setShowPickupSug(false), 150)}
-                returnKeyType="search"
-              />
-              {pickupSugLoading && <ActivityIndicator size="small" color={Colors.primary} style={{ marginLeft: 6 }} />}
-              {pickupCoords && !pickupSugLoading && (
-                <MaterialCommunityIcons name="check-circle" size={18} color={Colors.success || '#4caf50'} />
+        {/* Pickup Location - Readonly Summary Card */}
+        <Card shadow="medium" style={styles.section}>
+          <View style={styles.pickupHeader}>
+            <MaterialCommunityIcons name="map-marker" size={18} color={Colors.primary} />
+            <Text style={styles.pickupLabel}>Pickup Location</Text>
+          </View>
+          <View style={styles.pickupReadonlyBox}>
+            <MaterialCommunityIcons name="map-marker-check" size={24} color={Colors.primary} />
+            <View style={styles.pickupTextContainer}>
+              <Text style={styles.pickupAddress} numberOfLines={2}>{pickupAddress}</Text>
+              {pickupCoords && (
+                <Text style={styles.pickupCoords}>
+                  {pickupCoords.latitude.toFixed(5)}, {pickupCoords.longitude.toFixed(5)}
+                </Text>
               )}
             </View>
-
-            {showPickupSug && pickupSuggestions.length > 0 && (
-              <View style={styles.dropSugBox}>
-                {pickupSuggestions.map((s, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    style={[styles.dropSugItem, idx < pickupSuggestions.length - 1 && styles.dropSugBorder]}
-                    onPress={() => handleSelectPickupSuggestion(s)}
-                    activeOpacity={0.7}
-                  >
-                    <MaterialCommunityIcons name="map-marker-outline" size={15} color={Colors.primary} style={{ marginRight: 8 }} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.dropSugShort} numberOfLines={1}>{s.shortLabel}</Text>
-                      <Text style={styles.dropSugFull}  numberOfLines={1}>{s.label}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
           </View>
         </Card>
 
@@ -648,6 +591,16 @@ const styles = StyleSheet.create({
   infoItem:  { flex: 1, alignItems: 'center' },
   infoLabel: { fontSize: 11, color: Colors.textSecondary },
   infoValue: { fontSize: 13, fontWeight: '700', color: Colors.text },
+  pickupHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: Spacing.sm },
+  pickupLabel: { fontSize: 15, fontWeight: '700', color: Colors.text },
+  pickupReadonlyBox: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing.md,
+    backgroundColor: Colors.background, borderRadius: BorderRadius.md,
+    padding: Spacing.md, borderWidth: 1.5, borderColor: Colors.primary,
+  },
+  pickupTextContainer: { flex: 1 },
+  pickupAddress: { fontSize: 15, fontWeight: '600', color: Colors.text, lineHeight: 22 },
+  pickupCoords: { fontSize: 11, color: Colors.textMuted, marginTop: 4, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   chipGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   eChip:     { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: BorderRadius.full, borderWidth: 1.5, borderColor: Colors.border, backgroundColor: Colors.surface },
   eChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },

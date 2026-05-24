@@ -13,7 +13,7 @@ import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../../theme';
 import { getAmbulanceType, formatDistance, formatETA, formatCurrency } from '../../utils/helpers';
 
 export default function AmbulanceDetailsScreen({ route, navigation }) {
-  const { ambulanceId, location } = route.params;
+  const { ambulanceId, location, searchText } = route.params;
   const dispatch = useDispatch();
   const { selected: ambulance, isLoadingDetails } = useSelector((s) => s.ambulance);
   const [selectedFacilities, setSelectedFacilities] = useState([]);
@@ -34,7 +34,7 @@ export default function AmbulanceDetailsScreen({ route, navigation }) {
       Alert.alert('Location Required', 'We need your pickup location to proceed.');
       return;
     }
-    navigation.navigate('BookingConfirmation', { ambulance, location, selectedFacilities });
+    navigation.navigate('BookingConfirmation', { ambulance, location, selectedFacilities, searchText });
   };
 
   return (
