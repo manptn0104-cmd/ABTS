@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Alert,
 } from 'react-native';
@@ -13,10 +13,12 @@ import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../../theme';
 import { getAmbulanceType, formatDistance, formatETA, formatCurrency } from '../../utils/helpers';
 
 export default function AmbulanceDetailsScreen({ route, navigation }) {
-  const { ambulanceId, location, searchText } = route.params;
+  const { ambulanceId, location, searchText, selectedFacilities = [] } = route.params || {};
   const dispatch = useDispatch();
   const { selected: ambulance, isLoadingDetails } = useSelector((s) => s.ambulance);
-  const [selectedFacilities, setSelectedFacilities] = useState([]);
+
+  // Log received facilities for debugging
+  console.log('[AmbulanceDetailsScreen] Received selectedFacilities:', selectedFacilities);
 
   useEffect(() => {
     dispatch(fetchAmbulanceById(ambulanceId));
@@ -34,6 +36,7 @@ export default function AmbulanceDetailsScreen({ route, navigation }) {
       Alert.alert('Location Required', 'We need your pickup location to proceed.');
       return;
     }
+    console.log('[AmbulanceDetailsScreen] Navigating to BookingConfirmation with selectedFacilities:', selectedFacilities);
     navigation.navigate('BookingConfirmation', { ambulance, location, selectedFacilities, searchText });
   };
 

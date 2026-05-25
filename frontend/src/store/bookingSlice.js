@@ -5,10 +5,20 @@ export const createBooking = createAsyncThunk(
   'booking/create',
   async (data, { rejectWithValue }) => {
     try {
+      console.log('[bookingSlice] Sending booking request with data:', JSON.stringify(data, null, 2));
       const res = await bookingApi.createBooking(data);
+      console.log('[bookingSlice] ✓ Booking created successfully:', res.data);
       return res.data.booking;
     } catch (err) {
-      return rejectWithValue(err.response?.data?.message || 'Failed to create booking.');
+      const errorMsg = err.response?.data?.message || 'Failed to create booking.';
+      const errorData = err.response?.data;
+      console.error('[bookingSlice] ❌ Booking creation failed:', {
+        status: err.response?.status,
+        message: errorMsg,
+        errors: errorData?.errors,
+        fullError: errorData,
+      });
+      return rejectWithValue(errorMsg);
     }
   }
 );

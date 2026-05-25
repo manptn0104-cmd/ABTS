@@ -230,15 +230,16 @@ export default function HomeScreen({ navigation }) {
   }, [address, manualLocation]);
 
   const handleSearch = useCallback(() => {
-    navigation.navigate('AmbulanceList', { location: effectiveLocation, searchText });
-  }, [navigation, effectiveLocation, searchText]);
+    navigation.navigate('AmbulanceList', { location: effectiveLocation, searchText, selectedFacilities });
+  }, [navigation, effectiveLocation, searchText, selectedFacilities]);
 
   const handleQuickBook = () => {
-    navigation.navigate('AmbulanceList', { location: effectiveLocation || { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude }, searchText });
+    navigation.navigate('AmbulanceList', { location: effectiveLocation || { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude }, searchText, selectedFacilities });
   };
 
   const handleAmbulancePress = (amb) => {
-    navigation.navigate('AmbulanceDetails', { ambulanceId: amb._id, location: effectiveLocation, searchText });
+    console.log('[HomeScreen] Navigating to AmbulanceDetails with selectedFacilities:', selectedFacilities);
+    navigation.navigate('AmbulanceDetails', { ambulanceId: amb._id, location: effectiveLocation, searchText, selectedFacilities });
   };
 
   return (
@@ -382,7 +383,7 @@ export default function HomeScreen({ navigation }) {
               <TouchableOpacity
                 key={t.value}
                 style={styles.typeChip}
-                onPress={() => navigation.navigate('AmbulanceList', { location: effectiveLocation, emergencyType: t.value, searchText })}
+                onPress={() => navigation.navigate('AmbulanceList', { location: effectiveLocation, emergencyType: t.value, searchText, selectedFacilities })}
               >
                 <MaterialCommunityIcons name={t.icon} size={22} color={Colors.primary} />
                 <Text style={styles.typeLabel}>{t.label}</Text>
@@ -460,7 +461,7 @@ export default function HomeScreen({ navigation }) {
             {liveAmbulances.length > 3 && (
               <TouchableOpacity
                 style={styles.viewAllBtn}
-                onPress={() => navigation.navigate('AmbulanceList', { location })}
+                onPress={() => navigation.navigate('AmbulanceList', { location, selectedFacilities })}
               >
                 <Text style={styles.viewAllText}>View all {liveAmbulances.length} ambulances →</Text>
               </TouchableOpacity>

@@ -14,7 +14,26 @@ import { formatCurrency, formatDistance, formatETA, getAmbulanceType, haversineD
 import { EMERGENCY_TYPES, PAYMENT_METHODS, FACILITIES } from '../../utils/constants';
 
 export default function BookingConfirmationScreen({ route, navigation }) {
-  const { ambulance, location, selectedFacilities = [], searchText = 'Current Location' } = route.params;
+  // Defensive route.params extraction with fallbacks
+  const {
+    ambulance,
+    location,
+    selectedFacilities: passedFacilities = [],
+    searchText = 'Current Location',
+  } = route.params || {};
+  
+  // Ensure selectedFacilities is always an array
+  const selectedFacilities = Array.isArray(passedFacilities) ? passedFacilities : [];
+  
+  // Log received parameters for debugging
+  console.log('[BookingConfirmationScreen] Route params:', {
+    ambulanceId: ambulance?._id,
+    location: { lat: location?.latitude, lng: location?.longitude },
+    selectedFacilitiesReceived: passedFacilities,
+    selectedFacilitiesProcessed: selectedFacilities,
+    searchText,
+  });
+  
   const dispatch = useDispatch();
   const { isCreating, current: booking, error } = useSelector((s) => s.booking);
 
@@ -23,7 +42,6 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   const [patientDetails, setPatientDetails] = useState({ name: '', age: '', condition: '', bloodGroup: '' });
   const [emergencyContact, setEmergencyContact] = useState({ name: '', phone: '' });
   const [showConfirmOverlay, setShowConfirmOverlay] = useState(false);
-  const [requiredFacilities, setRequiredFacilities] = useState([]);
   const [guardianName, setGuardianName] = useState('');
   const [relation, setRelation] = useState('');
   const [consentAccepted, setConsentAccepted] = useState(false);
@@ -101,32 +119,70 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   }, [booking]);
 
   const doBooking = async () => {
+    // Validate ambulance and location
+    if (!ambulance) {
+      Alert.alert('Error', 'Ambulance information is missing. Please go back and select an ambulance.');
+      return;
+    }
+
+    if (!ambulance._id) {
+      Alert.alert('Error', 'Invalid ambulance ID. Please try again.');
+      return;
+    }
+
     const resolvedPickup = pickupCoords || location;
 
+    // Validate pickup location
+    if (!resolvedPickup) {
+      Alert.alert('Error', 'Pickup location is required. Please go back and select a location.');
+      return;
+    }
+
+    if (!resolvedPickup.latitude || !resolvedPickup.longitude) {
+      Alert.alert('Error', 'Invalid pickup coordinates. Please try again.');
+      return;
+    }
+
+    // Validate patient details
+    if (!patientDetails.name || patientDetails.name.trim() === '') {
+      Alert.alert('Validation Error', 'Please enter patient name.');
+      return;
+    }
+
+    if (!emergencyContact.phone || emergencyContact.phone.trim() === '') {
+      Alert.alert('Validation Error', 'Please enter emergency contact phone number.');
+      return;
+    }
+
+    // Build booking data
     const bookingData = {
       ambulanceId: ambulance._id,
       pickupLocation: {
         type: 'Point',
-        coordinates: resolvedPickup ? [resolvedPickup.longitude, resolvedPickup.latitude] : [0, 0],
+        coordinates: [resolvedPickup.longitude, resolvedPickup.latitude],
         address: pickupAddress || 'Current Location',
       },
-      // Drop location is fully optional — only include it if coords were resolved from a suggestion
       dropLocation: (dropCoords && dropAddress)
-        ? { type: 'Point', coordinates: [dropCoords.longitude, dropCoords.latitude], address: dropAddress }
+        ? {
+            type: 'Point',
+            coordinates: [dropCoords.longitude, dropCoords.latitude],
+            address: dropAddress,
+          }
         : undefined,
       emergencyType,
       patientDetails: {
         name: patientDetails.name,
-        age:  patientDetails.age ? parseInt(patientDetails.age) : undefined,
+        age: patientDetails.age ? parseInt(patientDetails.age, 10) : undefined,
         condition: patientDetails.condition,
-        bloodGroup: patientDetails.bloodGroup,
+        bloodGroup: patientDetails.bloodGroup || 'unknown',
         emergencyContact: {
-          name:  emergencyContact.name,
+          name: emergencyContact.name,
           phone: emergencyContact.phone,
         },
       },
       estimatedDistance: distanceKm,
       paymentMethod,
+      requiredFacilities: selectedFacilities && Array.isArray(selectedFacilities) ? selectedFacilities : [],
       patientConsent: {
         accepted: consentAccepted,
         acceptedAt: new Date(),
@@ -136,12 +192,49 @@ export default function BookingConfirmationScreen({ route, navigation }) {
       },
     };
 
-    console.log('BOOKING PAYLOAD:', bookingData);
+    // Log the complete booking payload for debugging
+    console.log(
+      'FINAL BOOKING PAYLOAD:',
+      JSON.stringify(bookingData, null, 2)
+    );
 
-    const result = await dispatch(createBooking(bookingData));
+    // Additional validation logs
+    console.log('Booking Validation Checks:');
+    console.log('✓ Ambulance ID:', ambulance._id);
+    console.log('✓ Pickup Coordinates:', bookingData.pickupLocation.coordinates);
+    console.log('✓ Patient Name:', bookingData.patientDetails.name);
+    console.log('✓ Emergency Contact Phone:', bookingData.patientDetails.emergencyContact.phone);
+    console.log('✓ Required Facilities:', bookingData.requiredFacilities);
+    console.log('✓ Emergency Type:', emergencyType);
+    console.log('✓ Payment Method:', paymentMethod);
 
-    if (result.type === 'booking/create/rejected') {
-      Alert.alert('Booking Failed', result.payload || 'Could not create booking. Please try again.');
+    try {
+      const result = await dispatch(createBooking(bookingData));
+
+      if (result.type === 'booking/create/fulfilled') {
+        // Booking successful - handled by useEffect above
+        console.log('✓ Booking created successfully:', result.payload);
+      } else if (result.type === 'booking/create/rejected') {
+        // Booking failed - show backend error
+        const errorMsg = result.payload || 'Could not create booking. Please try again.';
+        console.error('❌ Booking rejected:', errorMsg);
+        Alert.alert('Booking Failed', errorMsg);
+      }
+    } catch (error) {
+      // Catch any unexpected errors
+      console.error('❌ BOOKING ERROR:', {
+        message: error.message,
+        response: error.response?.data || error.response,
+        status: error.response?.status,
+        errorData: error.response?.data?.error,
+      });
+
+      const errorMsg = error.response?.data?.message
+        || error.response?.data?.error
+        || error.message
+        || 'Booking failed due to an unexpected error.';
+
+      Alert.alert('Booking Error', errorMsg);
     }
   };
 
@@ -152,11 +245,38 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   };
 
   const handleConfirm = () => {
-    // Consent is required
+    // Validate ambulance selection
+    if (!ambulance || !ambulance._id) {
+      showAlert('Error', 'Please select a valid ambulance.');
+      return;
+    }
+
+    // Validate location
+    if (!location && !pickupCoords) {
+      showAlert('Error', 'Pickup location is required.');
+      return;
+    }
+
+    // Validate patient name
+    if (!patientDetails.name || patientDetails.name.trim() === '') {
+      showAlert('Validation Error', 'Please enter patient name.');
+      return;
+    }
+
+    // Validate emergency contact phone
+    if (!emergencyContact.phone || emergencyContact.phone.trim() === '') {
+      showAlert('Validation Error', 'Please enter emergency contact phone number.');
+      return;
+    }
+
+    // Validate consents
     if (!consentAccepted || !riskAccepted) {
       showAlert('Consent Required', 'Please scroll to the bottom and accept both the patient consent terms and emergency risk acknowledgement.');
       return;
     }
+
+    // Log validation success
+    console.log('✓ All validations passed before booking');
     setShowConfirmOverlay(true);
   };
 
@@ -363,45 +483,48 @@ export default function BookingConfirmationScreen({ route, navigation }) {
           </View>
         </Card>
 
-        {/* Required Facilities — Bug #6 fix: only show what this ambulance has */}
-        {(() => {
-          const availFacs = FACILITIES.filter((f) => ambulance.facilities?.[f.key]);
-          if (availFacs.length === 0) return null;
-          return (
-            <Card shadow="light" style={styles.section}>
-              <Text style={styles.sectionTitle}>Required Facilities</Text>
+        {/* Selected Facilities (readonly) — from HomeScreen selection */}
+        <Card shadow="light" style={styles.section}>
+          <Text style={styles.sectionTitle}>Selected Facilities</Text>
+          {selectedFacilities && selectedFacilities.length > 0 ? (
+            <>
               <Text style={[styles.inputLabel, { marginBottom: 10 }]}>
-                Select any special facilities you need (based on this ambulance's equipment)
+                Special facilities needed for this booking
               </Text>
               <View style={styles.facilityChips}>
-                {availFacs.map((fac) => {
-                  const isSelected = requiredFacilities.includes(fac.key);
-                  return (
-                    <TouchableOpacity
-                      key={fac.key}
-                      style={[
-                        styles.facilityChip,
-                        { backgroundColor: isSelected ? Colors.primary : Colors.background },
-                      ]}
-                      onPress={() => setRequiredFacilities((prev) =>
-                        prev.includes(fac.key) ? prev.filter((k) => k !== fac.key) : [...prev, fac.key]
-                      )}
-                    >
-                      <MaterialCommunityIcons
-                        name={fac.icon}
-                        size={16}
-                        color={isSelected ? Colors.white : Colors.textMuted}
-                      />
-                      <Text style={[styles.facilityChipText, { color: isSelected ? Colors.white : Colors.textSecondary }]}>
-                        {fac.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                {FACILITIES.filter((f) => selectedFacilities.includes(f.key)).map((fac) => (
+                  <View
+                    key={fac.key}
+                    style={[
+                      styles.facilityChip,
+                      { backgroundColor: Colors.primary, opacity: 0.9 },
+                    ]}
+                  >
+                    <MaterialCommunityIcons
+                      name={fac.icon}
+                      size={16}
+                      color={Colors.white}
+                    />
+                    <Text style={[styles.facilityChipText, { color: Colors.white }]}>
+                      {fac.label}
+                    </Text>
+                    <MaterialCommunityIcons
+                      name="check-circle"
+                      size={14}
+                      color={Colors.white}
+                      style={{ marginLeft: 4 }}
+                    />
+                  </View>
+                ))}
               </View>
-            </Card>
-          );
-        })()}
+            </>
+          ) : (
+            <View style={styles.emptyFacilitiesBox}>
+              <MaterialCommunityIcons name="information-outline" size={24} color={Colors.textSecondary} />
+              <Text style={styles.emptyFacilitiesText}>No special facilities selected</Text>
+            </View>
+          )}
+        </Card>
 
         {/* Payment Method */}
         <Card shadow="light" style={styles.section}>
@@ -730,6 +853,24 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
   },
   facilityChipText: { fontSize: 12, fontWeight: '600' },
+
+  // Empty Facilities State
+  emptyFacilitiesBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    backgroundColor: Colors.background,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  emptyFacilitiesText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+  },
 
   // Patient Consent
   consentCard: {
