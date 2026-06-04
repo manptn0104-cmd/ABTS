@@ -101,6 +101,11 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   // Clear any stale booking from previous session on mount
   useEffect(() => { dispatch(clearCurrent()); }, [dispatch]);
 
+  // Debug: Log blood group changes
+  useEffect(() => {
+    console.log('[BloodGroup] Current state:', patientDetails.bloodGroup);
+  }, [patientDetails.bloodGroup]);
+
   const typeConfig = getAmbulanceType(ambulance.type);
 
   // Estimated fare calculation
@@ -203,6 +208,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
     console.log('✓ Ambulance ID:', ambulance._id);
     console.log('✓ Pickup Coordinates:', bookingData.pickupLocation.coordinates);
     console.log('✓ Patient Name:', bookingData.patientDetails.name);
+    console.log('✓ Patient Blood Group:', bookingData.patientDetails.bloodGroup);
     console.log('✓ Emergency Contact Phone:', bookingData.patientDetails.emergencyContact.phone);
     console.log('✓ Required Facilities:', bookingData.requiredFacilities);
     console.log('✓ Emergency Type:', emergencyType);
@@ -400,15 +406,25 @@ export default function BookingConfirmationScreen({ route, navigation }) {
           {/* Blood Group - Bug #9 fix: no pre-selected 'unknown' */}
           <Text style={[styles.inputLabel, { marginTop: Spacing.md, marginBottom: 8 }]}>Blood Group (Optional)</Text>
           <View style={styles.bloodGroupGrid}>
-            {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'].map((bg) => (
-              <TouchableOpacity
-                key={bg}
-                style={[styles.bgChip, patientDetails.bloodGroup === bg.toLowerCase().replace('+','+').replace('-','-') && styles.bgChipActive]}
-                onPress={() => setPatientDetails((p) => ({ ...p, bloodGroup: bg === 'Unknown' ? 'unknown' : bg }))}
-              >
-                <Text style={[styles.bgChipText, patientDetails.bloodGroup === (bg === 'Unknown' ? 'unknown' : bg) && styles.bgChipTextActive]}>{bg}</Text>
-              </TouchableOpacity>
-            ))}
+            {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'].map((bg) => {
+              const savedValue = bg === 'Unknown' ? 'unknown' : bg;
+              const isSelected = patientDetails.bloodGroup === savedValue;
+              
+              return (
+                <TouchableOpacity
+                  key={bg}
+                  style={[styles.bgChip, isSelected && styles.bgChipActive]}
+                  onPress={() => {
+                    setPatientDetails((p) => ({ ...p, bloodGroup: savedValue }));
+                    console.log('[BloodGroup] Selected:', savedValue);
+                  }}
+                >
+                  <Text style={[styles.bgChipText, isSelected && styles.bgChipTextActive]}>
+                    {bg}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           {/* Emergency Contact */}
