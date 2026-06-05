@@ -151,7 +151,7 @@ async function findNextBestAmbulance(booking, previousAmbulanceIds = []) {
 /**
  * Perform reassignment of booking to a new ambulance
  */
-async function reassignBooking(booking, newAmbulance, oldAmbulanceId = null) {
+async function reassignBooking(booking, newAmbulance, oldAmbulanceId = null, reason = null) {
   try {
     const io = getIO();
     const oldAmbulanceName = booking.ambulance?.vehicleNumber || 'Unknown';
@@ -166,7 +166,7 @@ async function reassignBooking(booking, newAmbulance, oldAmbulanceId = null) {
         driverId: oldAmbulance?.owner,
         assignedAt: booking.reassignedAt || booking.assignedAt, // Use reassignedAt if available
         timeoutAt: new Date(),
-        reason: `Timeout after ${getTimeoutDuration(booking.emergencyType)} seconds`,
+        reason: reason || `Timeout after ${getTimeoutDuration(booking.emergencyType)} seconds`,
         driverName: oldDriver?.name || 'Unknown',
         vehicleNumber: oldAmbulance?.vehicleNumber || 'Unknown',
       });

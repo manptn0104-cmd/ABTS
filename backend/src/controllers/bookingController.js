@@ -154,6 +154,95 @@ exports.updateBookingStatus = async (req, res, next) => {
       });
     }
 
+    // Handle driver rejection with immediate reassignment
+    if (status === 'rejected') {
+      const ambulance = booking.ambulance;
+      console.log('[Driver Reject] Booking:', booking._id);
+      console.log('[Driver Reject] Ambulance:', ambulance?.vehicleNumber);
+      console.log('[Driver Reject] Starting immediate reassignment...');
+
+      // 1. Release current ambulance and mark it available
+      if (ambulance) {
+        await Ambulance.findByIdAndUpdate(ambulance._id, { isAvailable: true });
+        console.log(`[Driver Reject] Released ambulance ${ambulance.vehicleNumber} back to available pool`);
+      }
+
+      // 2. Find next best ambulance, excluding the rejected one and previous reassignments
+      const previousIds = booking.previousAssignments.map((p) => p.ambulanceId);
+      if (ambulance) {
+        previousIds.push(ambulance._id);
+      }
+
+      const { findNextBestAmbulance, reassignBooking } = require('../services/bookingTimeoutService');
+      const nextAmbulance = await findNextBestAmbulance(booking, previousIds);
+
+      console.log('[Driver Reject] Next ambulance found:', nextAmbulance?.vehicleNumber);
+
+      if (nextAmbulance) {
+        // We found a next ambulance! Assign it immediately.
+        const reason = `Driver Rejected: ${rejectionReason || 'No reason provided'}`;
+        await reassignBooking(booking, nextAmbulance, ambulance?._id, reason);
+
+        console.log('[Driver Reject] Reassignment completed');
+
+        // Populate for response
+        await booking.populate([
+          { path: 'user', select: 'name phone email' },
+          { path: 'ambulance' },
+        ]);
+
+        return res.json({
+          success: true,
+          message: 'Booking rejected by driver. Reassigned to next best ambulance.',
+          booking,
+        });
+      } else {
+        // No next ambulance found. Mark the booking as Rejected.
+        console.log('[Driver Reject] No available ambulances for reassignment.');
+        booking.status = 'rejected';
+        booking.rejectionReason = rejectionReason || 'No available ambulances in the area.';
+
+        // Push the rejection to history
+        if (ambulance) {
+          booking.previousAssignments.push({
+            ambulanceId: ambulance._id,
+            driverId: ambulance.owner,
+            assignedAt: booking.reassignedAt || booking.assignedAt,
+            timeoutAt: new Date(),
+            reason: `Driver Rejected (Final): ${rejectionReason || 'No reason provided'}`,
+            driverName: ambulance.driverName || 'Unknown',
+            vehicleNumber: ambulance.vehicleNumber || 'Unknown',
+          });
+        }
+
+        await booking.save();
+        console.log('[Driver Reject] Reassignment completed');
+
+        // Populate booking data
+        await booking.populate([
+          { path: 'user', select: 'name phone email' },
+          { path: 'ambulance' },
+        ]);
+
+        // Notify user about final rejection via socket
+        const io = getIO();
+        const userId = booking.user._id || booking.user;
+        io.to(`user_${userId}`).emit('booking_status_update', {
+          bookingId: booking._id,
+          status: 'rejected',
+          message: `Your booking was rejected by the driver: ${booking.rejectionReason}`,
+          booking,
+        });
+        io.to(`booking_${booking._id}`).emit('booking_status_update', { status: 'rejected', booking });
+
+        return res.json({
+          success: true,
+          message: 'Booking rejected. No other ambulances available.',
+          booking,
+        });
+      }
+    }
+
     booking.status = status;
     if (status === 'rejected')    booking.rejectionReason = rejectionReason || 'No reason provided';
     if (status === 'confirmed') {
