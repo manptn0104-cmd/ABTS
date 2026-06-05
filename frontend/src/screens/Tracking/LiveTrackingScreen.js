@@ -17,6 +17,7 @@ import { getBookingStatus, formatETA, formatDateTime } from '../../utils/helpers
 import { BOOKING_STATUS } from '../../utils/constants';
 
 const PULSE_STATUSES = ['pending', 'confirmed', 'in_progress'];
+const POLL_INTERVAL = 15000; // 15 seconds for pending bookings
 
 export default function LiveTrackingScreen({ route, navigation }) {
   const { bookingId } = route.params;
@@ -29,11 +30,41 @@ export default function LiveTrackingScreen({ route, navigation }) {
   const [mapRegion, setMapRegion]       = useState(null);
   const [eta, setEta]                   = useState(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pollIntervalRef = useRef(null);
 
   // Fetch booking data
   useEffect(() => {
     dispatch(fetchBookingById(bookingId));
   }, [bookingId, dispatch]);
+
+  // Polling for pending bookings (fallback if socket fails)
+  // This ensures we catch reassignments even if socket event is missed
+  useEffect(() => {
+    if (booking?.status === 'pending') {
+      console.log('[LiveTracking] Starting poll for pending booking');
+      // Clear existing poll
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      
+      // Poll every 15 seconds
+      pollIntervalRef.current = setInterval(() => {
+        console.log('[LiveTracking] Polling booking for updates...');
+        dispatch(fetchBookingById(bookingId));
+      }, POLL_INTERVAL);
+
+      return () => {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          console.log('[LiveTracking] Stopped polling');
+        }
+      };
+    } else {
+      // Stop polling when booking is no longer pending
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        console.log('[LiveTracking] Stopped polling (status changed to ' + booking?.status + ')');
+      }
+    }
+  }, [booking?.status, bookingId, dispatch]);
 
   // Set initial map region from booking pickup
   useEffect(() => {
@@ -90,6 +121,19 @@ export default function LiveTrackingScreen({ route, navigation }) {
       }
     };
 
+    // NEW: Handle booking reassignment
+    const handleBookingReassigned = (data) => {
+      console.log('[LiveTracking] ✓ booking_reassigned event received:', data);
+      // Refetch the booking to get updated ambulance/driver info
+      dispatch(fetchBookingById(bookingId)).then(() => {
+        Alert.alert(
+          'Booking Reassigned',
+          `Your booking has been reassigned to ${data.vehicleNumber}. Your new driver is ${data.driverName}.`,
+          [{ text: 'OK' }]
+        );
+      });
+    };
+
     const setup = async () => {
       socket = await connect();
       if (!socket) return;
@@ -97,6 +141,7 @@ export default function LiveTrackingScreen({ route, navigation }) {
       socket.emit('join_booking_room', bookingId);
       socket.on('ambulance_location', handleAmbulanceLoc);
       socket.on('booking_status_update', handleStatusUpdate);
+      socket.on('booking_reassigned', handleBookingReassigned); // NEW
     };
 
     setup();
@@ -106,9 +151,10 @@ export default function LiveTrackingScreen({ route, navigation }) {
         socket.emit('leave_booking_room', bookingId);
         socket.off('ambulance_location', handleAmbulanceLoc);
         socket.off('booking_status_update', handleStatusUpdate);
+        socket.off('booking_reassigned', handleBookingReassigned); // NEW
       }
     };
-  }, [bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [bookingId, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCancel = () => {
     Alert.alert(

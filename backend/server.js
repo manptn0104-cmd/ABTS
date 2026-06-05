@@ -2,11 +2,15 @@ require('dotenv').config();
 const http = require('http');
 const app = require('./src/app');
 const { initializeSocket } = require('./src/services/socketService');
+const { startTimeoutScheduler } = require('./src/services/bookingTimeoutService');
 
 const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
 
 initializeSocket(server);
+
+// Start automatic booking timeout/reassignment scheduler
+startTimeoutScheduler();
 
 server.listen(PORT, () => {
   console.log(`\n🚑 ABTS Server running on port ${PORT}`);

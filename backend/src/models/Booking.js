@@ -14,7 +14,7 @@ const bookingSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled', 'rejected'],
+      enum: ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled', 'rejected', 'unavailable'],
       default: 'pending',
     },
     pickupLocation: {
@@ -114,6 +114,33 @@ const bookingSchema = new mongoose.Schema(
         default: false,
       },
     },
+    assignedAt: {
+      type: Date,
+      default: () => new Date(),
+    },
+    reassignedAt: {
+      type: Date,
+      default: null,
+    },
+    reassignmentCount: {
+      type: Number,
+      default: 0,
+    },
+    previousAssignments: [{
+      ambulanceId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Ambulance',
+      },
+      driverId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+      assignedAt: Date,
+      timeoutAt: Date,
+      reason: String,
+      driverName: String,
+      vehicleNumber: String,
+    }],
   },
   { timestamps: true }
 );
@@ -122,5 +149,7 @@ bookingSchema.index({ pickupLocation: '2dsphere' });
 bookingSchema.index({ user: 1, status: 1 });
 bookingSchema.index({ ambulance: 1, status: 1 });
 bookingSchema.index({ createdAt: -1 });
+bookingSchema.index({ status: 1, assignedAt: 1 });
+bookingSchema.index({ status: 1, reassignmentCount: 1 });
 
 module.exports = mongoose.model('Booking', bookingSchema);

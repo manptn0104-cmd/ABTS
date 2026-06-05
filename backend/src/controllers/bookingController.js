@@ -320,3 +320,119 @@ exports.getAmbulanceBookings = async (req, res, next) => {
     next(error);
   }
 };
+
+// GET /api/bookings/:id/reassignment-history  (admin)
+exports.getReassignmentHistory = async (req, res, next) => {
+  try {
+    const booking = await Booking.findById(req.params.id)
+      .populate('ambulance', 'vehicleNumber driverName')
+      .populate('previousAssignments.ambulanceId', 'vehicleNumber')
+      .populate('previousAssignments.driverId', 'name phone');
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+
+    const reassignmentData = {
+      bookingId: booking._id,
+      currentAmbulance: booking.ambulance,
+      reassignmentCount: booking.reassignmentCount,
+      assignedAt: booking.assignedAt,
+      previousAssignments: booking.previousAssignments,
+      totalAttempts: booking.reassignmentCount + 1, // Current assignment + reassignments
+    };
+
+    res.json({ success: true, data: reassignmentData });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// POST /api/bookings/:id/manual-reassign  (admin - for testing/manual override)
+exports.manualReassign = async (req, res, next) => {
+  try {
+    const { bookingTimeoutService } = require('../services/bookingTimeoutService');
+    const booking = await Booking.findById(req.params.id).populate('ambulance');
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+
+    if (booking.status !== 'pending') {
+      return res.status(400).json({ success: false, message: 'Only pending bookings can be reassigned.' });
+    }
+
+    // Find previously assigned ambulances
+    const previousIds = booking.previousAssignments.map((p) => p.ambulanceId);
+    previousIds.push(booking.ambulance._id);
+
+    // Find next best ambulance
+    const { findNextBestAmbulance, reassignBooking } = require('../services/bookingTimeoutService');
+    const nextAmbulance = await findNextBestAmbulance(booking, previousIds);
+
+    if (!nextAmbulance) {
+      return res.status(409).json({
+        success: false,
+        message: 'No available ambulances for reassignment.',
+      });
+    }
+
+    // Perform reassignment
+    await reassignBooking(booking, nextAmbulance, booking.ambulance._id);
+
+    res.json({
+      success: true,
+      message: 'Booking reassigned successfully',
+      booking,
+      newAmbulanceId: nextAmbulance._id,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET /api/bookings/debug/timeout-status  (admin - debug endpoint)
+exports.getTimeoutDebugStatus = async (req, res, next) => {
+  try {
+    // Get all pending bookings with timing details
+    const pendingBookings = await Booking.find({
+      status: 'pending',
+      assignedAt: { $exists: true, $ne: null },
+    }).populate('ambulance', 'vehicleNumber driverName').select('_id status emergencyType assignedAt reassignedAt reassignmentCount ambulance createdAt');
+
+    const now = Date.now();
+    const bookingStatus = pendingBookings.map((booking) => {
+      const referenceTime = booking.reassignedAt || booking.assignedAt;
+      const elapsedSec = (now - referenceTime.getTime()) / 1000;
+      const timeout = (booking.emergencyType === 'accident' || booking.emergencyType === 'cardiac' || booking.emergencyType === 'trauma')
+        ? 60 : 120;
+      
+      return {
+        bookingId: booking._id,
+        status: booking.status,
+        emergencyType: booking.emergencyType,
+        ambulanceNumber: booking.ambulance?.vehicleNumber,
+        driverName: booking.ambulance?.driverName,
+        createdAt: booking.createdAt,
+        assignedAt: booking.assignedAt,
+        reassignedAt: booking.reassignedAt,
+        reassignmentCount: booking.reassignmentCount,
+        referenceTimeUsed: booking.reassignedAt ? 'reassignedAt' : 'assignedAt',
+        elapsedSeconds: Math.round(elapsedSec),
+        timeoutThreshold: timeout,
+        willTimeoutIn: Math.max(0, Math.round(timeout - elapsedSec)),
+        isTimedOut: elapsedSec >= timeout,
+      };
+    });
+
+    res.json({
+      success: true,
+      message: 'Timeout debug status',
+      now: new Date(),
+      pendingBookingsCount: pendingBookings.length,
+      bookings: bookingStatus,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
