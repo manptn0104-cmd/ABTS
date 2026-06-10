@@ -24,6 +24,18 @@ exports.createBooking = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'ambulanceId and pickupLocation are required.' });
     }
 
+    // Validate emergency contact phone (optional but must be 10 digits if provided)
+    if (patientDetails?.emergencyContact?.phone) {
+      const phoneRegex = /^[0-9]{10}$/;
+      const cleanPhone = patientDetails.emergencyContact.phone.replace(/\D/g, '');
+      if (!phoneRegex.test(cleanPhone)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Emergency contact phone must be a valid 10-digit number if provided.'
+        });
+      }
+    }
+
     const ambulance = await Ambulance.findById(ambulanceId);
     if (!ambulance) {
       return res.status(404).json({ success: false, message: 'Ambulance not found.' });

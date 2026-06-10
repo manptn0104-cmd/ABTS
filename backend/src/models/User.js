@@ -61,6 +61,36 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // Driver approval fields
+    status: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected'],
+      default: 'pending',
+    },
+    aadhaarNumber: {
+      type: String,
+      trim: true,
+      match: [/^[0-9]{12}$/, 'Aadhaar number must be exactly 12 digits'],
+    },
+    drivingLicenseNumber: {
+      type: String,
+      trim: true,
+    },
+    emergencyContact: {
+      type: String,
+      trim: true,
+    },
+    documents: {
+      aadhaar: String,
+      drivingLicense: String,
+      profilePhoto: String,
+    },
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    approvedAt: Date,
+    rejectionReason: String,
   },
   { timestamps: true }
 );

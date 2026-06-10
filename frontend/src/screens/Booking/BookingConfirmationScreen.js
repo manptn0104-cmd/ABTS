@@ -46,6 +46,10 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   const [relation, setRelation] = useState('');
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [riskAccepted, setRiskAccepted] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+  const [patientNameError, setPatientNameError] = useState('');
+  const [ageError, setAgeError] = useState('');
+  const [emergencyContactNameError, setEmergencyContactNameError] = useState('');
 
   // Pickup location (readonly, pre-filled from home screen via navigation params)
   const pickupAddress = searchText || 'Current Location';
@@ -98,6 +102,69 @@ export default function BookingConfirmationScreen({ route, navigation }) {
     setShowDropSug(false);
   };
 
+  const validatePhone = (phone) => {
+    if (!phone || phone.trim() === '') {
+      setPhoneError('');
+      return true; // Optional field - empty is valid
+    }
+    const numbersOnly = phone.replace(/\D/g, '');
+    if (numbersOnly.length !== 10) {
+      setPhoneError('Please enter a valid 10-digit phone number');
+      return false;
+    }
+    setPhoneError('');
+    return true;
+  };
+
+  const validatePatientName = (name) => {
+    if (!name || name.trim() === '') {
+      setPatientNameError('');
+      return true; // Optional field - empty is valid
+    }
+    // Allow only letters (A-Z, a-z) and spaces
+    const lettersAndSpacesOnly = /^[A-Za-z\s]+$/;
+    if (!lettersAndSpacesOnly.test(name)) {
+      setPatientNameError('Patient name must contain only letters and spaces');
+      return false;
+    }
+    setPatientNameError('');
+    return true;
+  };
+
+  const validateAge = (age) => {
+    if (!age || age.trim() === '') {
+      setAgeError('');
+      return true; // Optional field - empty is valid
+    }
+    // Allow only numbers
+    if (!/^\d+$/.test(age)) {
+      setAgeError('Age must contain only numbers');
+      return false;
+    }
+    const ageNum = parseInt(age, 10);
+    if (ageNum < 0 || ageNum > 120) {
+      setAgeError('Age must be between 0 and 120');
+      return false;
+    }
+    setAgeError('');
+    return true;
+  };
+
+  const validateEmergencyContactName = (name) => {
+    if (!name || name.trim() === '') {
+      setEmergencyContactNameError('');
+      return true; // Optional field - empty is valid
+    }
+    // Allow only letters (A-Z, a-z) and spaces
+    const lettersAndSpacesOnly = /^[A-Za-z\s]+$/;
+    if (!lettersAndSpacesOnly.test(name)) {
+      setEmergencyContactNameError('Contact name must contain only letters and spaces');
+      return false;
+    }
+    setEmergencyContactNameError('');
+    return true;
+  };
+
   // Clear any stale booking from previous session on mount
   useEffect(() => { dispatch(clearCurrent()); }, [dispatch]);
 
@@ -148,14 +215,24 @@ export default function BookingConfirmationScreen({ route, navigation }) {
       return;
     }
 
-    // Validate patient details
-    if (!patientDetails.name || patientDetails.name.trim() === '') {
-      Alert.alert('Validation Error', 'Please enter patient name.');
+    // Validate all patient details (optional, but if filled must be valid)
+    if (!validatePatientName(patientDetails.name)) {
+      Alert.alert('Validation Error', patientNameError);
       return;
     }
 
-    if (!emergencyContact.phone || emergencyContact.phone.trim() === '') {
-      Alert.alert('Validation Error', 'Please enter emergency contact phone number.');
+    if (!validateAge(patientDetails.age)) {
+      Alert.alert('Validation Error', ageError);
+      return;
+    }
+
+    if (!validateEmergencyContactName(emergencyContact.name)) {
+      Alert.alert('Validation Error', emergencyContactNameError);
+      return;
+    }
+
+    // Emergency contact phone is optional, but if provided must be valid
+    if (emergencyContact.phone && !validatePhone(emergencyContact.phone)) {
       return;
     }
 
@@ -263,15 +340,23 @@ export default function BookingConfirmationScreen({ route, navigation }) {
       return;
     }
 
-    // Validate patient name
-    if (!patientDetails.name || patientDetails.name.trim() === '') {
-      showAlert('Validation Error', 'Please enter patient name.');
+    // Validate patient name (optional, but if filled must be valid)
+    if (!validatePatientName(patientDetails.name)) {
       return;
     }
 
-    // Validate emergency contact phone
-    if (!emergencyContact.phone || emergencyContact.phone.trim() === '') {
-      showAlert('Validation Error', 'Please enter emergency contact phone number.');
+    // Validate age (optional, but if filled must be valid)
+    if (!validateAge(patientDetails.age)) {
+      return;
+    }
+
+    // Validate emergency contact name (optional, but if filled must be valid)
+    if (!validateEmergencyContactName(emergencyContact.name)) {
+      return;
+    }
+
+    // Validate emergency contact phone (optional but must be 10 digits if provided)
+    if (!validatePhone(emergencyContact.phone)) {
       return;
     }
 
@@ -372,23 +457,33 @@ export default function BookingConfirmationScreen({ route, navigation }) {
             <View style={styles.inputHalf}>
               <Text style={styles.inputLabel}>Patient Name</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, patientNameError && styles.inputError]}
                 value={patientDetails.name}
-                onChangeText={(v) => setPatientDetails((p) => ({ ...p, name: v }))}
+                onChangeText={(v) => {
+                  setPatientDetails((p) => ({ ...p, name: v }));
+                  validatePatientName(v);
+                }}
                 placeholder="Full name"
                 placeholderTextColor={Colors.textMuted}
               />
+              {patientNameError ? <Text style={styles.errorText}>{patientNameError}</Text> : null}
             </View>
             <View style={styles.inputHalf}>
               <Text style={styles.inputLabel}>Age</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, ageError && styles.inputError]}
                 value={patientDetails.age}
-                onChangeText={(v) => setPatientDetails((p) => ({ ...p, age: v }))}
+                onChangeText={(v) => {
+                  // Only allow numbers
+                  const numbersOnly = v.replace(/\D/g, '');
+                  setPatientDetails((p) => ({ ...p, age: numbersOnly }));
+                  validateAge(numbersOnly);
+                }}
                 placeholder="Age"
                 placeholderTextColor={Colors.textMuted}
                 keyboardType="numeric"
               />
+              {ageError ? <Text style={styles.errorText}>{ageError}</Text> : null}
             </View>
           </View>
 
@@ -433,24 +528,33 @@ export default function BookingConfirmationScreen({ route, navigation }) {
             <View style={styles.inputHalf}>
               <Text style={styles.inputLabel}>Contact Name</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, emergencyContactNameError && styles.inputError]}
                 value={emergencyContact.name}
-                onChangeText={(v) => setEmergencyContact((c) => ({ ...c, name: v }))}
+                onChangeText={(v) => {
+                  setEmergencyContact((c) => ({ ...c, name: v }));
+                  validateEmergencyContactName(v);
+                }}
                 placeholder="Full name"
                 placeholderTextColor={Colors.textMuted}
               />
+              {emergencyContactNameError ? <Text style={styles.errorText}>{emergencyContactNameError}</Text> : null}
             </View>
             <View style={styles.inputHalf}>
               <Text style={styles.inputLabel}>Contact Phone</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, phoneError && styles.inputError]}
                 value={emergencyContact.phone}
-                onChangeText={(v) => setEmergencyContact((c) => ({ ...c, phone: v }))}
-                placeholder="10-digit number"
+                onChangeText={(v) => {
+                  const numbersOnly = v.replace(/\D/g, '');
+                  setEmergencyContact((c) => ({ ...c, phone: numbersOnly }));
+                  validatePhone(numbersOnly);
+                }}
+                placeholder="10-digit number (optional)"
                 placeholderTextColor={Colors.textMuted}
                 keyboardType="phone-pad"
-                maxLength={15}
+                maxLength={10}
               />
+              {phoneError ? <Text style={styles.errorText}>{phoneError}</Text> : null}
             </View>
           </View>
         </Card>
@@ -704,7 +808,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
           title="Confirm Booking"
           onPress={handleConfirm}
           loading={isCreating}
-          disabled={isCreating}
+          disabled={isCreating || !!phoneError || !!patientNameError || !!ageError || !!emergencyContactNameError}
           size="lg"
           style={styles.confirmBtn}
           icon={<MaterialCommunityIcons name="check-circle" size={20} color={Colors.white} />}
@@ -752,6 +856,14 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: Colors.border,
     borderRadius: BorderRadius.md, padding: Spacing.sm,
     fontSize: 14, color: Colors.text, backgroundColor: Colors.surface,
+  },
+  inputError: {
+    borderColor: Colors.error,
+  },
+  errorText: {
+    color: Colors.error,
+    fontSize: 11,
+    marginTop: 4,
   },
   inputMultiline: { minHeight: 72, textAlignVertical: 'top', marginBottom: 0 },
   payRow:    { flexDirection: 'row', gap: 10 },
