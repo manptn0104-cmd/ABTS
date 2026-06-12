@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { login, clearError } from '../../store/authSlice';
-import Input  from '../../components/common/Input';
+import Input from '../../components/common/Input';
 import Button from '../../components/common/Button';
 import { Colors, Spacing, Typography } from '../../theme';
 
@@ -18,19 +18,19 @@ export default function LoginScreen({ navigation }) {
   const [tab, setTab] = useState('password'); // 'password' | 'otp'
 
   // Password tab state
-  const [form, setForm]     = useState({ email: '', password: '' });
+  const [form, setForm] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
 
   // OTP tab state
-  const [phone, setPhone]           = useState('');
+  const [phone, setPhone] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [otpSending, setOtpSending] = useState(false);
 
   const validatePassword = () => {
     const e = {};
-    if (!form.email.trim())                    e.email    = 'Email is required';
-    else if (!/\S+@\S+\.\S+/.test(form.email)) e.email    = 'Enter a valid email';
-    if (!form.password)                        e.password = 'Password is required';
+    if (!form.email.trim()) e.email = 'Email is required';
+    else if (!/\S+@\S+\.\S+/.test(form.email)) e.email = 'Enter a valid email';
+    if (!form.password) e.password = 'Password is required';
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -58,7 +58,7 @@ export default function LoginScreen({ navigation }) {
     setOtpSending(true);
     try {
       const res = await fetch(
-        (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000') + '/api/auth/send-otp',
+        (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5001') + '/api/auth/send-otp',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -188,10 +188,10 @@ export default function LoginScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe:      { flex: 1, backgroundColor: Colors.primary },
-  flex:      { flex: 1 },
+  safe: { flex: 1, backgroundColor: Colors.primary },
+  flex: { flex: 1 },
   container: { flexGrow: 1, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl },
-  hero:      { alignItems: 'center', paddingTop: Spacing.xxl, paddingBottom: Spacing.xl },
+  hero: { alignItems: 'center', paddingTop: Spacing.xxl, paddingBottom: Spacing.xl },
   logoCircle: {
     width: 90, height: 90, borderRadius: 45,
     backgroundColor: Colors.white,
@@ -201,8 +201,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3, shadowRadius: 8, elevation: 8,
   },
   logoEmoji: { fontSize: 44 },
-  appName:   { fontSize: 32, fontWeight: '800', color: Colors.white, letterSpacing: 2 },
-  tagline:   { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
+  appName: { fontSize: 32, fontWeight: '800', color: Colors.white, letterSpacing: 2 },
+  tagline: { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
   card: {
     backgroundColor: Colors.surface, borderRadius: 24, padding: Spacing.xl,
     shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
@@ -219,14 +219,14 @@ const styles = StyleSheet.create({
     flex: 1, flexDirection: 'row', alignItems: 'center',
     justifyContent: 'center', paddingVertical: 8, borderRadius: 10,
   },
-  tabBtnActive:     { backgroundColor: Colors.primary },
-  tabBtnText:       { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
+  tabBtnActive: { backgroundColor: Colors.primary },
+  tabBtnText: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
   tabBtnTextActive: { color: Colors.white },
   otpHint: { fontSize: 13, color: Colors.textSecondary, marginBottom: Spacing.md, lineHeight: 20 },
-  btn:         { marginTop: Spacing.sm },
-  forgotBtn:   { alignItems: 'center', marginTop: Spacing.md },
-  forgotText:  { fontSize: 13, color: Colors.primary, fontWeight: '600' },
+  btn: { marginTop: Spacing.sm },
+  forgotBtn: { alignItems: 'center', marginTop: Spacing.md },
+  forgotText: { fontSize: 13, color: Colors.primary, fontWeight: '600' },
   registerRow: { flexDirection: 'row', justifyContent: 'center', marginTop: Spacing.xl },
-  registerText:{ fontSize: 14, color: 'rgba(255,255,255,0.9)' },
-  registerLink:{ fontSize: 14, color: Colors.white, fontWeight: '800' },
+  registerText: { fontSize: 14, color: 'rgba(255,255,255,0.9)' },
+  registerLink: { fontSize: 14, color: Colors.white, fontWeight: '800' },
 });

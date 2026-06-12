@@ -17,8 +17,8 @@ export default function OtpVerificationScreen({ route, navigation }) {
   const dispatch = useDispatch();
   const { isLoading } = useSelector((s) => s.auth);
 
-  const [digits, setDigits]       = useState(Array(OTP_LENGTH).fill(''));
-  const [error, setError]         = useState('');
+  const [digits, setDigits] = useState(Array(OTP_LENGTH).fill(''));
+  const [error, setError] = useState('');
   const [countdown, setCountdown] = useState(RESEND_SECONDS);
   const [resending, setResending] = useState(false);
 
@@ -77,7 +77,7 @@ export default function OtpVerificationScreen({ route, navigation }) {
     setError('');
     try {
       const res = await fetch(
-        (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000') + '/api/auth/send-otp',
+        (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5001') + '/api/auth/send-otp',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -195,10 +195,10 @@ export default function OtpVerificationScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe:      { flex: 1, backgroundColor: Colors.primary },
-  flex:      { flex: 1 },
+  safe: { flex: 1, backgroundColor: Colors.primary },
+  flex: { flex: 1 },
   container: { flexGrow: 1, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.xl },
-  backBtn:   { marginTop: Spacing.md, alignSelf: 'flex-start', padding: 4 },
+  backBtn: { marginTop: Spacing.md, alignSelf: 'flex-start', padding: 4 },
 
   hero: { alignItems: 'center', paddingTop: Spacing.xl, paddingBottom: Spacing.xl },
   iconCircle: {
@@ -210,7 +210,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2, shadowRadius: 8, elevation: 6,
   },
   heroTitle: { fontSize: 24, fontWeight: '800', color: Colors.white, marginBottom: 8 },
-  heroSub:   { fontSize: 14, color: 'rgba(255,255,255,0.8)', textAlign: 'center', lineHeight: 22 },
+  heroSub: { fontSize: 14, color: 'rgba(255,255,255,0.8)', textAlign: 'center', lineHeight: 22 },
   heroPhone: { fontWeight: '700', color: Colors.white },
 
   demoBanner: {
@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   otpBoxFilled: { borderColor: Colors.primary },
-  otpBoxError:  { borderColor: '#ef5350' },
+  otpBoxError: { borderColor: '#ef5350' },
 
   errorText: {
     color: '#ffcdd2',
@@ -255,8 +255,8 @@ const styles = StyleSheet.create({
   verifyBtnDisabled: { opacity: 0.7 },
   verifyBtnText: { fontSize: 16, fontWeight: '700', color: Colors.primary },
 
-  resendRow:   { alignItems: 'center' },
-  resendWait:  { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
+  resendRow: { alignItems: 'center' },
+  resendWait: { fontSize: 13, color: 'rgba(255,255,255,0.7)' },
   resendTimer: { fontWeight: '700', color: Colors.white },
-  resendLink:  { fontSize: 14, fontWeight: '700', color: Colors.white, textDecorationLine: 'underline' },
+  resendLink: { fontSize: 14, fontWeight: '700', color: Colors.white, textDecorationLine: 'underline' },
 });

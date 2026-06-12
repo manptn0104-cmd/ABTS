@@ -47,6 +47,14 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [riskAccepted, setRiskAccepted] = useState(false);
 
+  // Validation error states
+  const [patientNameError, setPatientNameError] = useState('');
+  const [ageError, setAgeError] = useState('');
+  const [contactNameError, setContactNameError] = useState('');
+  const [contactPhoneError, setContactPhoneError] = useState('');
+  const [guardianNameError, setGuardianNameError] = useState('');
+  const [relationError, setRelationError] = useState('');
+
   // Pickup location (readonly, pre-filled from home screen via navigation params)
   const pickupAddress = searchText || 'Current Location';
   const pickupCoords = location || null;
@@ -122,6 +130,96 @@ export default function BookingConfirmationScreen({ route, navigation }) {
       navigation.replace('LiveTracking', { bookingId: booking._id });
     }
   }, [booking]);
+
+  // Real-time validation handlers
+  const handlePatientNameChange = (text) => {
+    const cleaned = text.replace(/[^A-Za-z ]/g, '');
+    setPatientDetails((p) => ({ ...p, name: cleaned }));
+    if (text !== cleaned || !/^[A-Za-z ]*$/.test(text)) {
+      setPatientNameError("Only letters and spaces allowed.");
+    } else {
+      setPatientNameError("");
+    }
+  };
+
+  const handleAgeChange = (text) => {
+    const cleaned = text.replace(/[^0-9]/g, '');
+    const truncated = cleaned.slice(0, 3);
+    
+    if (truncated === '') {
+      setPatientDetails((p) => ({ ...p, age: '' }));
+      setAgeError('');
+      return;
+    }
+    
+    const parsed = parseInt(truncated, 10);
+    if (parsed > 120) {
+      return;
+    }
+    
+    setPatientDetails((p) => ({ ...p, age: truncated }));
+    
+    if (parsed < 1) {
+      setAgeError("Age must be between 1 and 120.");
+    } else {
+      setAgeError("");
+    }
+  };
+
+  const handleContactNameChange = (text) => {
+    const cleaned = text.replace(/[^A-Za-z ]/g, '');
+    setEmergencyContact((c) => ({ ...c, name: cleaned }));
+    if (text !== cleaned || !/^[A-Za-z ]*$/.test(text)) {
+      setContactNameError("Only letters and spaces allowed.");
+    } else {
+      setContactNameError("");
+    }
+  };
+
+  const handleContactPhoneChange = (text) => {
+    const cleaned = text.replace(/[^0-9]/g, '');
+    const truncated = cleaned.slice(0, 10);
+    setEmergencyContact((c) => ({ ...c, phone: truncated }));
+    if (!/^\d{10}$/.test(truncated)) {
+      setContactPhoneError("Phone number must be exactly 10 digits.");
+    } else {
+      setContactPhoneError("");
+    }
+  };
+
+  const handleGuardianNameChange = (text) => {
+    const cleaned = text.replace(/[^A-Za-z ]/g, '');
+    setGuardianName(cleaned);
+    if (text !== cleaned || !/^[A-Za-z ]*$/.test(text)) {
+      setGuardianNameError("Only letters and spaces allowed.");
+    } else {
+      setGuardianNameError("");
+    }
+  };
+
+  const handleRelationChange = (text) => {
+    const cleaned = text.replace(/[^A-Za-z ]/g, '');
+    setRelation(cleaned);
+    if (text !== cleaned || !/^[A-Za-z ]*$/.test(text)) {
+      setRelationError("Only letters and spaces allowed.");
+    } else {
+      setRelationError("");
+    }
+  };
+
+  const isConfirmDisabled = 
+    isCreating ||
+    !!patientNameError ||
+    !!ageError ||
+    !!contactNameError ||
+    !!contactPhoneError ||
+    !!guardianNameError ||
+    !!relationError ||
+    !consentAccepted ||
+    !riskAccepted ||
+    !emergencyContact.phone ||
+    !/^\d{10}$/.test(emergencyContact.phone) ||
+    (patientDetails.age !== '' && patientDetails.age !== undefined && (parseInt(patientDetails.age, 10) < 1 || parseInt(patientDetails.age, 10) > 120));
 
   const doBooking = async () => {
     // Validate ambulance and location
@@ -372,23 +470,30 @@ export default function BookingConfirmationScreen({ route, navigation }) {
             <View style={styles.inputHalf}>
               <Text style={styles.inputLabel}>Patient Name</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, !!patientNameError && styles.inputError]}
                 value={patientDetails.name}
-                onChangeText={(v) => setPatientDetails((p) => ({ ...p, name: v }))}
+                onChangeText={handlePatientNameChange}
                 placeholder="Full name"
                 placeholderTextColor={Colors.textMuted}
               />
+              {!!patientNameError && (
+                <Text style={styles.errorText}>{patientNameError}</Text>
+              )}
             </View>
             <View style={styles.inputHalf}>
               <Text style={styles.inputLabel}>Age</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, !!ageError && styles.inputError]}
                 value={patientDetails.age}
-                onChangeText={(v) => setPatientDetails((p) => ({ ...p, age: v }))}
+                onChangeText={handleAgeChange}
                 placeholder="Age"
                 placeholderTextColor={Colors.textMuted}
                 keyboardType="numeric"
+                maxLength={3}
               />
+              {!!ageError && (
+                <Text style={styles.errorText}>{ageError}</Text>
+              )}
             </View>
           </View>
 
@@ -433,24 +538,30 @@ export default function BookingConfirmationScreen({ route, navigation }) {
             <View style={styles.inputHalf}>
               <Text style={styles.inputLabel}>Contact Name</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, !!contactNameError && styles.inputError]}
                 value={emergencyContact.name}
-                onChangeText={(v) => setEmergencyContact((c) => ({ ...c, name: v }))}
+                onChangeText={handleContactNameChange}
                 placeholder="Full name"
                 placeholderTextColor={Colors.textMuted}
               />
+              {!!contactNameError && (
+                <Text style={styles.errorText}>{contactNameError}</Text>
+              )}
             </View>
             <View style={styles.inputHalf}>
               <Text style={styles.inputLabel}>Contact Phone</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, !!contactPhoneError && styles.inputError]}
                 value={emergencyContact.phone}
-                onChangeText={(v) => setEmergencyContact((c) => ({ ...c, phone: v }))}
+                onChangeText={handleContactPhoneChange}
                 placeholder="10-digit number"
                 placeholderTextColor={Colors.textMuted}
                 keyboardType="phone-pad"
-                maxLength={15}
+                maxLength={10}
               />
+              {!!contactPhoneError && (
+                <Text style={styles.errorText}>{contactPhoneError}</Text>
+              )}
             </View>
           </View>
         </Card>
@@ -597,17 +708,24 @@ export default function BookingConfirmationScreen({ route, navigation }) {
           <TextInput
             placeholder="Guardian / Patient Name"
             value={guardianName}
-            onChangeText={setGuardianName}
-            style={styles.input}
+            onChangeText={handleGuardianNameChange}
+            style={[styles.input, !!guardianNameError && styles.inputError]}
             placeholderTextColor={Colors.textMuted}
           />
+          {!!guardianNameError && (
+            <Text style={styles.errorText}>{guardianNameError}</Text>
+          )}
+
           <TextInput
             placeholder="Relation (Father, Mother, Brother…)"
             value={relation}
-            onChangeText={setRelation}
-            style={[styles.input, { marginTop: 8 }]}
+            onChangeText={handleRelationChange}
+            style={[styles.input, { marginTop: 8 }, !!relationError && styles.inputError]}
             placeholderTextColor={Colors.textMuted}
           />
+          {!!relationError && (
+            <Text style={styles.errorText}>{relationError}</Text>
+          )}
 
           <TouchableOpacity
             style={styles.checkboxRow}
@@ -704,7 +822,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
           title="Confirm Booking"
           onPress={handleConfirm}
           loading={isCreating}
-          disabled={isCreating}
+          disabled={isConfirmDisabled}
           size="lg"
           style={styles.confirmBtn}
           icon={<MaterialCommunityIcons name="check-circle" size={20} color={Colors.white} />}
@@ -752,6 +870,15 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: Colors.border,
     borderRadius: BorderRadius.md, padding: Spacing.sm,
     fontSize: 14, color: Colors.text, backgroundColor: Colors.surface,
+  },
+  inputError: {
+    borderColor: Colors.error || '#E53935',
+  },
+  errorText: {
+    color: Colors.error || '#E53935',
+    fontSize: 11,
+    marginTop: 4,
+    fontWeight: '500',
   },
   inputMultiline: { minHeight: 72, textAlignVertical: 'top', marginBottom: 0 },
   payRow:    { flexDirection: 'row', gap: 10 },
