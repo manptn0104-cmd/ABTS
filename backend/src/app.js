@@ -1,3 +1,4 @@
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -12,6 +13,7 @@ const trackingRoutes  = require('./routes/tracking');
 const adminRoutes     = require('./routes/admin');
 const supportRoutes   = require('./routes/support');
 const reviewRoutes    = require('./routes/reviewRoutes');
+const driverRoutes    = require('./routes/drivers');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -56,6 +58,9 @@ if (process.env.NODE_ENV !== 'test') {
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
+// Static files
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 // Routes
 app.use('/api/auth',       authRoutes);
 app.use('/api/ambulances', ambulanceRoutes);
@@ -64,6 +69,7 @@ app.use('/api/tracking',   trackingRoutes);
 app.use('/api/admin',      adminRoutes);
 app.use('/api/support',    supportRoutes);
 app.use('/api/reviews',    reviewRoutes);
+app.use('/api/drivers',    driverRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

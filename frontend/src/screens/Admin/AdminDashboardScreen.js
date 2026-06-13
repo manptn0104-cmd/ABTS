@@ -12,7 +12,7 @@ import { logout } from '../../store/authSlice';
 import { Colors, Spacing } from '../../theme';
 import { API_BASE_URL } from '../../utils/constants';
 
-const TABS = ['Overview', 'Bookings', 'Users', 'Ambulances', 'Reviews'];
+const TABS = ['Overview', 'Bookings', 'Users', 'Ambulances', 'Drivers', 'Reviews'];
 
 const STATUS_COLOR = {
   pending:     '#F57F17',
@@ -746,12 +746,252 @@ function ReviewsTab() {
   );
 }
 
+// ── Drivers Tab ─────────────────────────────────────────────────────────────────
+function DriversTab() {
+  const [drivers, setDrivers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refresh, setRefresh] = useState(false);
+  const [selectedDriver, setSelectedDriver] = useState(null);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefresh(true); else setLoading(true);
+    try {
+      const res = await adminFetch('/admin/users?role=driver');
+      if (res.success) setDrivers(res.users || []);
+    } finally {
+      setLoading(false); setRefresh(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleApprove = async (driverId) => {
+    try {
+      const res = await adminPatch(`/admin/drivers/${driverId}/verification`, { status: 'approved' });
+      if (res.success) {
+        load(true);
+      } else {
+        alert(res.message || 'Failed to approve driver');
+      }
+    } catch (err) {
+      alert('Error approving driver');
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectionReason.trim()) {
+      alert('Please enter a rejection reason');
+      return;
+    }
+    try {
+      const res = await adminPatch(`/admin/drivers/${selectedDriver._id}/verification`, { 
+        status: 'rejected', 
+        note: rejectionReason 
+      });
+      if (res.success) {
+        setShowRejectModal(false);
+        setRejectionReason('');
+        setSelectedDriver(null);
+        load(true);
+      } else {
+        alert(res.message || 'Failed to reject driver');
+      }
+    } catch (err) {
+      alert('Error rejecting driver');
+    }
+  };
+
+  const openRejectModal = (driver) => {
+    setSelectedDriver(driver);
+    setRejectionReason('');
+    setShowRejectModal(true);
+  };
+
+  const closeRejectModal = () => {
+    setShowRejectModal(false);
+    setRejectionReason('');
+    setSelectedDriver(null);
+  };
+
+  const STATUS_COLOR = {
+    pending: '#F57F17',
+    approved: '#2E7D32',
+    rejected: '#B71C1C',
+  };
+
+  if (loading) return <View style={styles.center}><ActivityIndicator color={Colors.primary} size="large" /></View>;
+
+  const pendingDrivers = drivers.filter(d => d.approvalStatus === 'pending');
+  const approvedDrivers = drivers.filter(d => d.approvalStatus === 'approved');
+  const rejectedDrivers = drivers.filter(d => d.approvalStatus === 'rejected');
+
+  return (
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        contentContainerStyle={styles.tabContent}
+        refreshControl={<RefreshControl refreshing={refresh} onRefresh={() => load(true)} colors={[Colors.primary]} />}
+      >
+        <Text style={styles.sectionHeading}>Driver Verification</Text>
+
+        {/* Pending Drivers */}
+        <Text style={[styles.sectionHeading, { marginTop: 16 }]}>Pending Approval ({pendingDrivers.length})</Text>
+        {pendingDrivers.length === 0 ? (
+          <Text style={styles.emptyText}>No pending drivers</Text>
+        ) : (
+          pendingDrivers.map((driver) => (
+            <View key={driver._id} style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>{driver.name}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: STATUS_COLOR.pending + '22' }]}>
+                  <Text style={[styles.statusText, { color: STATUS_COLOR.pending }]}>Pending</Text>
+                </View>
+              </View>
+              <Text style={styles.cardSub}>📧 {driver.email}</Text>
+              <Text style={styles.cardSub}>📞 {driver.phone}</Text>
+              {driver.aadhaarNumber && <Text style={styles.cardSub}>🪪 Aadhaar: {driver.aadhaarNumber}</Text>}
+              {driver.licenceNumber && <Text style={styles.cardSub}>🪪 License: {driver.licenceNumber}</Text>}
+              
+              {/* Document Links */}
+              <View style={{ marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {driver.documents?.aadhaarImage?.url && (
+                  <TouchableOpacity style={styles.docLink}>
+                    <Text style={styles.docLinkText}>📄 Aadhaar</Text>
+                  </TouchableOpacity>
+                )}
+                {driver.documents?.licenceImage?.url && (
+                  <TouchableOpacity style={styles.docLink}>
+                    <Text style={styles.docLinkText}>📄 License</Text>
+                  </TouchableOpacity>
+                )}
+                {driver.documents?.driverPhoto?.url && (
+                  <TouchableOpacity style={styles.docLink}>
+                    <Text style={styles.docLinkText}>📄 Photo</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              <View style={styles.driverActions}>
+                <TouchableOpacity 
+                  style={[styles.actionBtn, styles.approveBtn]} 
+                  onPress={() => handleApprove(driver._id)}
+                >
+                  <MaterialCommunityIcons name="check" size={16} color="#fff" />
+                  <Text style={styles.actionBtnText}>Approve</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.actionBtn, styles.rejectBtn]} 
+                  onPress={() => openRejectModal(driver)}
+                >
+                  <MaterialCommunityIcons name="close" size={16} color="#fff" />
+                  <Text style={styles.actionBtnText}>Reject</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))
+        )}
+
+        {/* Approved Drivers */}
+        <Text style={[styles.sectionHeading, { marginTop: 24 }]}>Approved Drivers ({approvedDrivers.length})</Text>
+        {approvedDrivers.length === 0 ? (
+          <Text style={styles.emptyText}>No approved drivers</Text>
+        ) : (
+          approvedDrivers.map((driver) => (
+            <View key={driver._id} style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>{driver.name}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: STATUS_COLOR.approved + '22' }]}>
+                  <Text style={[styles.statusText, { color: STATUS_COLOR.approved }]}>Approved</Text>
+                </View>
+              </View>
+              <Text style={styles.cardSub}>📧 {driver.email}</Text>
+              <Text style={styles.cardSub}>📞 {driver.phone}</Text>
+            </View>
+          ))
+        )}
+
+        {/* Rejected Drivers */}
+        <Text style={[styles.sectionHeading, { marginTop: 24 }]}>Rejected Drivers ({rejectedDrivers.length})</Text>
+        {rejectedDrivers.length === 0 ? (
+          <Text style={styles.emptyText}>No rejected drivers</Text>
+        ) : (
+          rejectedDrivers.map((driver) => (
+            <View key={driver._id} style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>{driver.name}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: STATUS_COLOR.rejected + '22' }]}>
+                  <Text style={[styles.statusText, { color: STATUS_COLOR.rejected }]}>Rejected</Text>
+                </View>
+              </View>
+              <Text style={styles.cardSub}>📧 {driver.email}</Text>
+              <Text style={styles.cardSub}>📞 {driver.phone}</Text>
+              {driver.rejectionReason && (
+                <Text style={[styles.cardSub, { color: Colors.error }]}>❌ Reason: {driver.rejectionReason}</Text>
+              )}
+              <TouchableOpacity 
+                style={[styles.actionBtn, styles.approveBtn, { marginTop: 10 }]} 
+                onPress={() => handleApprove(driver._id)}
+              >
+                <MaterialCommunityIcons name="check" size={16} color="#fff" />
+                <Text style={styles.actionBtnText}>Approve Now</Text>
+              </TouchableOpacity>
+            </View>
+          ))
+        )}
+      </ScrollView>
+
+      {/* Reject Modal */}
+      <Modal visible={showRejectModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Reject Driver</Text>
+              <TouchableOpacity onPress={closeRejectModal}>
+                <MaterialCommunityIcons name="close" size={24} color={Colors.text} />
+              </TouchableOpacity>
+            </View>
+            {selectedDriver && (
+              <Text style={{ marginBottom: 10, color: Colors.textSecondary }}>
+                Rejecting: {selectedDriver.name}
+              </Text>
+            )}
+            <Text style={styles.inputLabel}>Rejection Reason *</Text>
+            <TextInput
+              style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
+              placeholder="Enter reason for rejection..."
+              placeholderTextColor={Colors.textMuted}
+              value={rejectionReason}
+              onChangeText={setRejectionReason}
+              multiline
+            />
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+              <TouchableOpacity 
+                style={[styles.actionBtn, styles.rejectBtn, { flex: 1 }]} 
+                onPress={handleReject}
+              >
+                <Text style={styles.actionBtnText}>Reject</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.actionBtn, { flex: 1, backgroundColor: Colors.border }]} 
+                onPress={closeRejectModal}
+              >
+                <Text style={[styles.actionBtnText, { color: Colors.text }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
 // ── Main Admin Dashboard ───────────────────────────────────────────────────────
 export default function AdminDashboardScreen() {
   const dispatch = useDispatch();
   const [activeTab, setActiveTab] = useState(0);
 
-  const TAB_ICONS = ['view-dashboard', 'clipboard-list', 'account-multiple', 'ambulance', 'star-outline'];
+  const TAB_ICONS = ['view-dashboard', 'clipboard-list', 'account-multiple', 'ambulance', 'account-check', 'star-outline'];
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -796,7 +1036,8 @@ export default function AdminDashboardScreen() {
         {activeTab === 1 && <BookingsTab />}
         {activeTab === 2 && <UsersTab />}
         {activeTab === 3 && <AmbulancesTab />}
-        {activeTab === 4 && <ReviewsTab />}
+        {activeTab === 4 && <DriversTab />}
+        {activeTab === 5 && <ReviewsTab />}
       </View>
     </SafeAreaView>
   );
@@ -920,4 +1161,13 @@ const styles = StyleSheet.create({
   reviewTag:    { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 16, backgroundColor: Colors.primary + '22', borderWidth: 1, borderColor: Colors.primary },
   reviewTagText:{ fontSize: 11, fontWeight: '600', color: Colors.primary },
   reviewFeedback:{ fontSize: 13, color: Colors.text, fontStyle: 'italic', marginTop: 8, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: Colors.primary },
+
+  // Driver tab styles
+  driverActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
+  approveBtn: { backgroundColor: '#2E7D32' },
+  rejectBtn: { backgroundColor: '#B71C1C' },
+  actionBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  docLink: { paddingHorizontal: 10, paddingVertical: 6, backgroundColor: Colors.background, borderRadius: 8, borderWidth: 1, borderColor: Colors.border },
+  docLinkText: { fontSize: 12, fontWeight: '600', color: Colors.primary },
 });

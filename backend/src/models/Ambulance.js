@@ -86,6 +86,50 @@ const ambulanceSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    documents: {
+      insurance: {
+        url: { type: String, default: null },
+        uploadedAt: { type: Date, default: null },
+      },
+      pollutionCertificate: {
+        url: { type: String, default: null },
+        uploadedAt: { type: Date, default: null },
+      },
+      rcBook: {
+        url: { type: String, default: null },
+        uploadedAt: { type: Date, default: null },
+      },
+      driverLicense: {
+        url: { type: String, default: null },
+        uploadedAt: { type: Date, default: null },
+      },
+      aadhaar: {
+        url: { type: String, default: null },
+        uploadedAt: { type: Date, default: null },
+      },
+      ambulanceImage: {
+        url: { type: String, default: null },
+        uploadedAt: { type: Date, default: null },
+      },
+    },
+    verificationStatus: {
+      type: String,
+      enum: ['unuploaded', 'pending', 'approved', 'rejected'],
+      default: 'unuploaded',
+    },
+    verificationNote: {
+      type: String,
+      default: null,
+    },
+    verifiedAt: {
+      type: Date,
+      default: null,
+    },
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
   },
   { timestamps: true }
 );

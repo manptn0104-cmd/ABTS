@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator }   from '@react-navigation/bottom-tabs';
 import { useSelector, useDispatch }   from 'react-redux';
@@ -7,6 +7,7 @@ import { MaterialCommunityIcons }     from '@expo/vector-icons';
 
 import { loadUser }  from '../store/authSlice';
 import { Colors }    from '../theme';
+import { fetchMyAmbulance } from '../api/ambulances';
 
 import LoginScreen              from '../screens/Auth/LoginScreen';
 import RegisterScreen           from '../screens/Auth/RegisterScreen';
@@ -21,6 +22,7 @@ import MyBookingsScreen         from '../screens/Booking/MyBookingsScreen';
 import DriverDashboardScreen    from '../screens/Driver/DriverDashboardScreen';
 import DriverMapScreen          from '../screens/Driver/DriverMapScreen';
 import ReviewsScreen            from '../screens/Driver/ReviewsScreen';
+import DriverVerificationScreen from '../screens/Driver/DriverVerificationScreen';
 import AdminDashboardScreen     from '../screens/Admin/AdminDashboardScreen';
 import HelpSupportScreen        from '../screens/Help/HelpSupportScreen';
 import FeedbackScreen          from '../screens/Feedback/FeedbackScreen';
@@ -218,9 +220,29 @@ export default function AppNavigator() {
       </View>
     );
   }
-
+ console.log('USER DATA:', user);
   if (!user) return <AuthStack />;
-  if (user.role === 'admin')  return <AdminStack />;
-  if (user.role === 'driver') return <DriverStack />;
-  return <AppStack />;
+
+if (user.role === 'admin') {
+  return <AdminStack />;
+}
+
+// Driver verification flow
+if (user.role === 'driver') {
+
+  if (user.approvalStatus !== 'approved') {
+    return (
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen
+          name="DriverVerification"
+          component={DriverVerificationScreen}
+        />
+      </Stack.Navigator>
+    );
+  }
+
+  return <DriverStack />;
+}
+
+return <AppStack />;
 }

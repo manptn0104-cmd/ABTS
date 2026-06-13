@@ -12,6 +12,10 @@ const {
   deregisterAmbulance,
   toggleAmbulanceAvailability,
 } = require('../controllers/adminController');
+const {
+  updateDriverVerification,
+  suspendDriver,
+} = require('../controllers/documentController');
 
 // All admin routes require authentication + admin role
 router.use(protect);
@@ -26,5 +30,9 @@ router.patch('/bookings/:id/reassign',        reassignBooking);
 router.post('/ambulances',                    registerAmbulance);
 router.delete('/ambulances/:id',              deregisterAmbulance);
 router.patch('/ambulances/:id/availability',  toggleAmbulanceAvailability);
+
+// Driver verification routes
+router.patch('/drivers/:driverId/verification', updateDriverVerification);
+router.patch('/drivers/:userId/suspend', suspendDriver);
 
 module.exports = router;

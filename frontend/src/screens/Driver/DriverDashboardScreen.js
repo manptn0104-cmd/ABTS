@@ -42,6 +42,21 @@ export default function DriverDashboardScreen() {
 
   const socketRef = useRef(null);
 
+  // Check driver approval status
+  useEffect(() => {
+    if (user?.role !== 'driver') return;
+    if (user?.approvalStatus !== 'approved') {
+      Alert.alert(
+        'Account Not Approved',
+        'Your driver account is pending verification. Please complete the verification process to access the dashboard.',
+        [
+          { text: 'OK', onPress: () => navigation.navigate('DriverVerification') }
+        ]
+      );
+      navigation.replace('DriverVerification');
+    }
+  }, [user, navigation]);
+
   // Load ambulance + bookings
   const loadData = useCallback(async () => {
     try {

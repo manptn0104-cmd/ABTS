@@ -10,6 +10,11 @@ const {
   updateLocation,
   toggleAvailability,
 } = require('../controllers/ambulanceController');
+const {
+  uploadDocuments,
+  getDocuments,
+} = require('../controllers/documentController');
+const { uploadAmbulanceDocs } = require('../middleware/upload');
 const { protect, authorize } = require('../middleware/auth');
 
 router.get('/mine', protect, authorize('driver', 'admin'), getMyAmbulance);
@@ -34,5 +39,9 @@ router.post(
 router.put('/:id', protect, authorize('driver', 'admin'), updateAmbulance);
 router.put('/:id/location', protect, updateLocation);
 router.put('/:id/availability', protect, authorize('driver', 'admin'), toggleAvailability);
+
+// Document upload & retrieval routes
+router.post('/:ambulanceId/documents', protect, authorize('driver', 'admin'), uploadAmbulanceDocs, uploadDocuments);
+router.get('/:ambulanceId/documents', protect, authorize('driver', 'admin'), getDocuments);
 
 module.exports = router;
