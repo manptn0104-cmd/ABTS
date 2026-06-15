@@ -25,10 +25,27 @@ exports.register = async (req, res, next) => {
     }
 
     // Only allow 'user' or 'driver' roles on self-registration
-    const allowedRole = ['user', 'driver'].includes(role) ? role : 'user';
-    const user = await User.create({ name, email, phone, password, role: allowedRole });
-    const token = generateToken(user._id);
+    const allowedRole = ['user', 'driver'].includes(role)
+  ? role
+  : 'user';
 
+const userData = {
+  name,
+  email,
+  phone,
+  password,
+  role: allowedRole,
+};
+
+// Only newly registered drivers require verification
+if (allowedRole === 'driver') {
+  userData.driverVerificationRequired = true;
+  userData.approvalStatus = null;
+}
+
+const user = await User.create(userData);
+
+const token = generateToken(user._id);
     res.status(201).json({
       success: true,
       message: 'Registration successful.',

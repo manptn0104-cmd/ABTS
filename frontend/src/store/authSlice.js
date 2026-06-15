@@ -31,6 +31,7 @@ export const loadUser = createAsyncThunk('auth/loadUser', async (_, { rejectWith
     const token = await AsyncStorage.getItem('abts_token');
     if (!token) throw new Error('No token');
     const res = await authApi.getMe();
+    console.log('USER DATA:', res.data.user);
     return { user: res.data.user, token };
   } catch (err) {
     await AsyncStorage.removeItem('abts_token');

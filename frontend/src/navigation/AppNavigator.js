@@ -228,9 +228,20 @@ if (user.role === 'admin') {
 }
 
 // Driver verification flow
+// Driver verification flow
 if (user.role === 'driver') {
+  // Existing drivers continue normally
+  if (!user.driverVerificationRequired) {
+    return <DriverStack />;
+  }
 
-  if (user.approvalStatus !== 'approved') {
+  const documentsUploaded =
+    !!user.aadhaarImage?.url &&
+    !!user.licenceImage?.url &&
+    !!user.driverPhoto?.url;
+
+  // New driver has not uploaded documents yet
+  if (!documentsUploaded) {
     return (
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen
@@ -241,8 +252,20 @@ if (user.role === 'driver') {
     );
   }
 
-  return <DriverStack />;
-}
+  // Documents uploaded and approved
+  if (user.approvalStatus === 'approved') {
+    return <DriverStack />;
+  }
 
+  // Pending or rejected
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen
+        name="DriverVerification"
+        component={DriverVerificationScreen}
+      />
+    </Stack.Navigator>
+  );
+}
 return <AppStack />;
 }

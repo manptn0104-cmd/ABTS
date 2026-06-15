@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigation } from '@react-navigation/native';
+import { loadUser} from '../../store/authSlice';
 import {
   View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity,
   ActivityIndicator, Alert, Platform, SafeAreaView,
@@ -17,7 +17,7 @@ const REQUIRED_DOCS = [
 ];
 
 export default function DriverVerificationScreen() {
-  const navigation = useNavigation();
+  
   const dispatch = useDispatch();
   const { user } = useSelector((s) => s.auth);
 
@@ -29,21 +29,26 @@ export default function DriverVerificationScreen() {
   const [files, setFiles] = useState({});
 
   const checkDriverStatus = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetchMyDriver();
-      if (res.data?.success && res.data?.driver) {
-        setDriverData(res.data.driver);
-      } else {
-        setDriverData(user);
-      }
-    } catch (err) {
-      // Error means no driver data yet, use current user
-      setDriverData(user);
-    } finally {
-      setLoading(false);
+  setLoading(true);
+
+  try {
+    // Refresh Redux user state first
+    await dispatch(loadUser());
+
+    // Get latest driver details from API
+    const res = await fetchMyDriver();
+
+    if (res.data?.success && res.data?.driver) {
+      setDriverData(res.data.driver);
+    } else {
+      setDriverData(null);
     }
-  }, [user]);
+  } catch (err) {
+    setDriverData(null);
+  } finally {
+    setLoading(false);
+  }
+}, [dispatch]);
 
   useEffect(() => {
     checkDriverStatus();
@@ -69,7 +74,16 @@ export default function DriverVerificationScreen() {
   const handleUploadDocs = async () => {
     // Validate that all documents are picked
     const missingDocs = REQUIRED_DOCS.filter((doc) => !files[doc.key]);
-    if (missingDocs.length > 0 && (!driverData?.documents || driverData.approvalStatus !== 'rejected')) {
+    const alreadyUploaded =
+  driverData?.aadhaarImage?.url &&
+  driverData?.licenceImage?.url &&
+  driverData?.driverPhoto?.url;
+
+if (
+  missingDocs.length > 0 &&
+  !alreadyUploaded &&
+  driverData?.approvalStatus !== 'rejected'
+) { 
       showAlert('Missing Documents', `Please select a file for: ${missingDocs.map((d) => d.label).join(', ')}`);
       return;
     }
@@ -92,12 +106,17 @@ export default function DriverVerificationScreen() {
       });
 
       const res = await uploadDriverDocuments(user._id, formData);
-      if (res.data?.success) {
-        setDriverData(res.data.driver);
-        setFiles({});
-        showAlert('Success', 'Documents uploaded successfully. Verification status is now pending.');
-        await checkDriverStatus();
-      } else {
+     if (res.data?.success) {
+  setFiles({});
+
+  await dispatch(loadUser());
+  await checkDriverStatus();
+
+  showAlert(
+    'Success',
+    'Documents uploaded successfully. Verification status is now pending.'
+  );
+} else {
         showAlert('Upload Failed', res.data?.message || 'Failed to upload documents.');
       }
     } catch (err) {
@@ -138,7 +157,9 @@ export default function DriverVerificationScreen() {
           </Text>
           <TouchableOpacity
             style={styles.dashboardBtn}
-            onPress={() => navigation.replace('DriverTabs')}
+            onPress={async () => {
+              await dispatch(loadUser());
+            }}
           >
             <MaterialCommunityIcons name="steering" size={18} color={Colors.white} />
             <Text style={styles.dashboardBtnText}>Go to Dashboard</Text>
@@ -208,7 +229,7 @@ export default function DriverVerificationScreen() {
           {REQUIRED_DOCS.map((doc) => {
             const hasPicked = !!files[doc.key];
             const fileObj = files[doc.key];
-            const prevUploaded = driverData?.documents?.[doc.key]?.url;
+            const prevUploaded = driverData?.[doc.key]?.url;
 
             return (
               <View key={doc.key} style={styles.docRow}>

@@ -39,15 +39,26 @@ exports.uploadDriverDocuments = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'No documents uploaded.' });
     }
     // Initialize document storage
-    driver.documents = driver.documents || {};
-    DRIVER_DOC_FIELDS.forEach((field) => {
-      const file = req.files[field]?.[0];
-      if (file) {
-        const rel = path.join('driver-docs', driver._id.toString(), file.filename);
-        driver.documents[field] = { url: buildPublicUrl(req, rel), uploadedAt: new Date() };
-      }
-    });
+    
+   DRIVER_DOC_FIELDS.forEach((field) => {
+  const file = req.files[field]?.[0];
+
+  if (file) {
+    const rel = path.join(
+      'driver-docs',
+      driver._id.toString(),
+      file.filename
+    );
+
+    driver[field] = {
+      url: buildPublicUrl(req, rel),
+      fileName: file.originalname,
+      uploadedAt: new Date(),
+    };
+  }
+});
     driver.approvalStatus = 'pending';
+    driver.rejectionReason = null;
     await driver.save();
     res.json({ success: true, message: 'Documents uploaded. Pending verification.', driver });
   } catch (error) {
@@ -99,9 +110,13 @@ exports.updateDriverVerification = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Driver not found.' });
     }
     driver.approvalStatus = status;
-    driver.rejectionReason = note || null;
-    driver.verifiedAt = new Date();
-    driver.verifiedBy = req.user._id;
+driver.rejectionReason = note || null;
+
+// Control dashboard access
+driver.canAccessDashboard = status === 'approved';
+
+driver.verifiedAt = new Date();
+driver.verifiedBy = req.user._id;
     await driver.save();
     await logAudit({
       actorId: req.user._id,
@@ -173,8 +188,18 @@ exports.getDocuments = async (req, res, next) => {
 exports.getDriverDocuments = async (req, res, next) => {
   try {
     const driver = await User.findById(req.params.driverId).select(
-      'name email phone role documents approvalStatus rejectionReason'
-    );
+  `
+  name
+  email
+  phone
+  role
+  approvalStatus
+  rejectionReason
+  aadhaarImage
+  licenceImage
+  driverPhoto
+  `
+);
     if (!driver || driver.role !== 'driver') {
       return res.status(404).json({ success: false, message: 'Driver not found.' });
     }

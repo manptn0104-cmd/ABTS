@@ -33,8 +33,12 @@ const userSchema = new mongoose.Schema(
       enum: ['user', 'driver', 'admin'],
       default: 'user',
     },
+    driverVerificationRequired: {
+      type: Boolean,
+      default: false,
+    },
     // Driver verification fields
-    approvalStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+    approvalStatus: { type: String, enum: [null,'pending', 'approved', 'rejected'], default: null, },
     rejectionReason: { type: String, default: null },
     aadhaarNumber: { type: String, default: null },
     licenceNumber: { type: String, default: null },
