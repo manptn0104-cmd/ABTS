@@ -110,6 +110,7 @@ export default function ProfileScreen({ navigation }) {
         )}
 
         {/* Menu */}
+
         <Card shadow="light" style={styles.section} padding={false}>
           {MENU_ITEMS.map((item, i) => (
             <TouchableOpacity
