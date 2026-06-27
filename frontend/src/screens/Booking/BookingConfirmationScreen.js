@@ -31,7 +31,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   const [riskAccepted, setRiskAccepted] = useState(false);
 
   // Address fetching logic
-  const [displayAddress, setDisplayAddress] = useState(route.params.searchText || '');
+  const [displayAddress, setDisplayAddress] = useState(route.params?.searchText || '');
   
   useEffect(() => {
     if (!displayAddress && location) {
@@ -58,7 +58,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   }, [location, displayAddress]);
 
   // Pickup location (editable, pre-filled from home screen)
-  const [pickupAddress,    setPickupAddress]    = useState(route.params.searchText || '');
+  const [pickupAddress,    setPickupAddress]    = useState(route.params?.searchText || '');
   const [pickupCoords,     setPickupCoords]     = useState(location || null);
   const [pickupSuggestions, setPickupSuggestions] = useState([]);
   const [pickupSugLoading,  setPickupSugLoading]  = useState(false);
@@ -138,14 +138,14 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   // Clear any stale booking from previous session on mount
   useEffect(() => { dispatch(clearCurrent()); }, [dispatch]);
 
-  const typeConfig = getAmbulanceType(ambulance.type);
+  const typeConfig = ambulance ? getAmbulanceType(ambulance.type) : { label: 'Unknown', color: '#757575' };
 
   // Estimated fare calculation
-  const distanceKm = ambulance.distanceKm ?? 5;
+  const distanceKm = ambulance?.distanceKm ?? 5;
   const fare = {
-    base:  ambulance.basePrice,
-    perKm: ambulance.pricePerKm * distanceKm,
-    total: ambulance.basePrice + ambulance.pricePerKm * distanceKm,
+    base:  ambulance?.basePrice ?? 0,
+    perKm: (ambulance?.pricePerKm ?? 0) * distanceKm,
+    total: (ambulance?.basePrice ?? 0) + (ambulance?.pricePerKm ?? 0) * distanceKm,
   };
 
   // Once booking is created, move to tracking or confirmation
@@ -156,7 +156,8 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   }, [booking]);
 
   const doBooking = async () => {
-    const resolvedPickup = location;
+    // Prefer user-selected/edited pickup coords over raw GPS fallback
+    const resolvedPickup = pickupCoords || location;
 
     const result = await dispatch(
       createBooking({
@@ -196,7 +197,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
     );
 
     if (createBooking.rejected.match(result)) {
-      Alert.alert('Booking Failed', result.payload || 'Could not create booking. Please try again.');
+      showAlert('Booking Failed', result.payload || 'Could not create booking. Please try again.');
     }
   };
 
@@ -214,6 +215,19 @@ export default function BookingConfirmationScreen({ route, navigation }) {
     }
     setShowConfirmOverlay(true);
   };
+
+  if (!ambulance) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.lg }}>
+          <Text style={{ fontSize: 16, color: Colors.text, marginBottom: 16, textAlign: 'center' }}>
+            No ambulance selected. Please go back and select an ambulance.
+          </Text>
+          <Button title="Go Back" onPress={() => navigation.goBack()} />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>

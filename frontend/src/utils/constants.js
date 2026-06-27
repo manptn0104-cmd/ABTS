@@ -1,5 +1,6 @@
-export const API_BASE_URL = 'https://abts-backend.onrender.com/api';
-export const SOCKET_URL = 'https://abts-backend.onrender.com';
+// Reads from .env / .env.local — change per environment without touching code
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:5001/api';
+export const SOCKET_URL   = process.env.EXPO_PUBLIC_SOCKET_URL   || 'http://localhost:5001';
 
 export const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
 

@@ -74,6 +74,11 @@ const authSlice = createSlice({
       state.user  = null;
       state.token = null;
       AsyncStorage.multiRemove(['abts_token', 'abts_user']);
+      // Disconnect socket so stale JWT connection is not reused on next login
+      try {
+        const { disconnectSocket } = require('../hooks/useSocket');
+        if (disconnectSocket) disconnectSocket();
+      } catch (_) {}
     },
     clearError: (state) => { state.error = null; },
   },

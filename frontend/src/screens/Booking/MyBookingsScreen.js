@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   RefreshControl, ActivityIndicator, Platform,
@@ -9,6 +9,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchMyBookings, updateBookingInList } from '../../store/bookingSlice';
 import { cancelBooking } from '../../api/bookings';
 import { useSocket } from '../../hooks/useSocket';
+import { useFocusEffect } from '@react-navigation/native';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import Card from '../../components/common/Card';
 import { Colors, Spacing, BorderRadius, Shadow } from '../../theme';
@@ -35,6 +36,13 @@ export default function MyBookingsScreen({ navigation }) {
   };
 
   useEffect(() => { load(activeTab); }, [activeTab]);
+
+  // Refresh the list every time the screen comes into focus (e.g. back from tracking)
+  useFocusEffect(
+    useCallback(() => {
+      load(activeTab);
+    }, [activeTab]) // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   // Real-time status updates via socket
   useEffect(() => {

@@ -48,7 +48,7 @@ const bookingSchema = new mongoose.Schema(
     },
     requiredFacilities: {
       type: [String],
-      enum: ['oxygen', 'saline', 'stretcher', 'nurse', 'doctor', 'ventilator', 'defibrillator'],
+      enum: ['oxygen', 'saline', 'stretcher', 'nurse', 'doctor', 'ventilator', 'defibrillator', 'cctvCamera'],
       default: [],
     },
     patientDetails: {

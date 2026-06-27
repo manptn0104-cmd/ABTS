@@ -8,6 +8,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { loginWithOtp } from '../../store/authSlice';
 import { Colors, Spacing, Typography } from '../../theme';
+import { API_BASE_URL } from '../../utils/constants';
 
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
@@ -77,7 +78,7 @@ export default function OtpVerificationScreen({ route, navigation }) {
     setError('');
     try {
       const res = await fetch(
-        (process.env.EXPO_PUBLIC_API_URL || 'https://abts-backend.onrender.com') + '/api/auth/send-otp',
+        API_BASE_URL.replace('/api', '') + '/api/auth/send-otp',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

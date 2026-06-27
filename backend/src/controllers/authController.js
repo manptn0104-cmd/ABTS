@@ -1,7 +1,9 @@
 const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
 const User = require('../models/User');
-const Otp  = require('../models/Otp');
+const OtpModel = require('../models/Otp');
+const Otp = OtpModel;
+const MAX_OTP_ATTEMPTS = OtpModel.MAX_OTP_ATTEMPTS;
 
 const generateToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -106,8 +108,11 @@ exports.changePassword = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Current password is incorrect.' });
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({ success: false, message: 'New password must be at least 6 characters.' });
+    if (newPassword.length < 8) {
+      return res.status(400).json({ success: false, message: 'New password must be at least 8 characters.' });
+    }
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(newPassword)) {
+      return res.status(400).json({ success: false, message: 'Password must contain uppercase, lowercase and a number.' });
     }
 
     user.password = newPassword;
@@ -217,8 +222,22 @@ exports.verifyOtp = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'OTP has expired. Please request a new one.' });
     }
 
+    // Brute-force protection: limit failed attempts
+    if (record.attempts >= MAX_OTP_ATTEMPTS) {
+      await Otp.deleteOne({ _id: record._id });
+      return res.status(429).json({ success: false, message: `Too many failed attempts. Please request a new OTP.` });
+    }
+
     if (record.code !== String(code)) {
-      return res.status(400).json({ success: false, message: 'Invalid OTP. Please check and try again.' });
+      record.attempts += 1;
+      await record.save();
+      const remaining = MAX_OTP_ATTEMPTS - record.attempts;
+      return res.status(400).json({
+        success: false,
+        message: remaining > 0
+          ? `Invalid OTP. ${remaining} attempt(s) remaining.`
+          : 'Too many failed attempts. Please request a new OTP.',
+      });
     }
 
     // Mark OTP as used

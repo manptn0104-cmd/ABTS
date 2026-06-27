@@ -25,7 +25,15 @@ const userSchema = new mongoose.Schema(
     password: {
       type: String,
       required: [true, 'Password is required'],
-      minlength: [6, 'Password must be at least 6 characters'],
+      minlength: [8, 'Password must be at least 8 characters'],
+      validate: {
+        validator: function (v) {
+          // Only validate on creation or when password is being changed
+          if (!this.isModified('password')) return true;
+          return /(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(v);
+        },
+        message: 'Password must contain at least one uppercase letter, one lowercase letter, and one number.',
+      },
       select: false,
     },
     role: {

@@ -13,12 +13,12 @@ exports.getAmbulances = async (req, res, next) => {
       page = 1, limit = 20,
     } = req.query;
 
-    const filterQuery = {};
+    const filterQuery = { isActive: { $ne: false } };
     if (available !== 'all') filterQuery.isAvailable = available !== 'false';
     if (type) filterQuery.type = type;
     if (emergencyType) filterQuery.specializations = emergencyType;
 
-    ['oxygen', 'saline', 'stretcher', 'nurse', 'doctor', 'defibrillator', 'ventilator'].forEach((f) => {
+    ['oxygen', 'saline', 'stretcher', 'nurse', 'doctor', 'defibrillator', 'ventilator', 'cctvCamera'].forEach((f) => {
       if (req.query[f] === 'true') filterQuery[`facilities.${f}`] = true;
     });
 
@@ -69,7 +69,25 @@ exports.getAmbulances = async (req, res, next) => {
         .sort({ 'rating.average': -1 });
     }
 
-    const total = await Ambulance.countDocuments(filterQuery);
+    let total;
+    if (lat && lng) {
+      // Accurate count for geo queries — must use same $geoNear filter
+      const countAgg = await Ambulance.aggregate([
+        {
+          $geoNear: {
+            near: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
+            distanceField: 'distance',
+            maxDistance: parseInt(maxDistance),
+            query: filterQuery,
+            spherical: true,
+          },
+        },
+        { $count: 'total' },
+      ]);
+      total = countAgg[0]?.total || 0;
+    } else {
+      total = await Ambulance.countDocuments(filterQuery);
+    }
 
     res.json({
       success: true,

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
-  Animated, Platform,
+  Animated, Platform, Alert, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -192,7 +192,19 @@ export default function LiveTrackingScreen({ route, navigation }) {
               <Text style={styles.driverName}>{booking.ambulance?.driverName}</Text>
               <Text style={styles.vehicleNum}>{booking.ambulance?.vehicleNumber}</Text>
             </View>
-            <TouchableOpacity style={styles.callBtn}>
+            <TouchableOpacity
+              style={styles.callBtn}
+              onPress={() => {
+                const phone = booking.ambulance?.driverPhone;
+                if (phone) {
+                  Linking.openURL(`tel:${phone}`).catch(() =>
+                    Alert.alert('Call Failed', 'Unable to open the phone dialer.')
+                  );
+                } else {
+                  Alert.alert('No Number', 'Driver phone number is not available.');
+                }
+              }}
+            >
               <MaterialCommunityIcons name="phone" size={22} color={Colors.white} />
             </TouchableOpacity>
           </View>

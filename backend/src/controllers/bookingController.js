@@ -1,13 +1,21 @@
-const Booking = require('../models/Booking');
+const Booking   = require('../models/Booking');
 const Ambulance = require('../models/Ambulance');
-const User = require('../models/User');
+const User      = require('../models/User');
 const { getIO } = require('../services/socketService');
+const { startMovementSimulation, clearSimulation } = require('../services/simulationService');
 
-// Map to track and clear simulator timers to prevent memory leaks
-const simulationTimers = new Map();
+// Shared valid state transitions (used by both driver and admin controllers)
+const VALID_TRANSITIONS = {
+  pending:     ['confirmed', 'rejected'],
+  confirmed:   ['in_progress', 'cancelled'],
+  in_progress: ['completed', 'cancelled'],
+};
 
 // POST /api/bookings
 exports.createBooking = async (req, res, next) => {
+  const session = await Booking.db.startSession();
+  session.startTransaction();
+  let transactionActive = true;
   try {
     const {
       ambulanceId,
@@ -22,15 +30,19 @@ exports.createBooking = async (req, res, next) => {
     } = req.body;
 
     if (!ambulanceId || !pickupLocation) {
+      transactionActive = false;
+      await session.abortTransaction();
       return res.status(400).json({ success: false, message: 'ambulanceId and pickupLocation are required.' });
     }
 
     const ambulance = await Ambulance.findOneAndUpdate(
       { _id: ambulanceId, isAvailable: true },
       { isAvailable: false },
-      { new: true }
+      { new: true, session }
     );
     if (!ambulance) {
+      transactionActive = false;
+      await session.abortTransaction();
       return res.status(409).json({ success: false, message: 'Ambulance is currently unavailable or already booked.' });
     }
 
@@ -40,7 +52,7 @@ exports.createBooking = async (req, res, next) => {
       total: ambulance.basePrice + ambulance.pricePerKm * estimatedDistance,
     };
 
-    const booking = await Booking.create({
+    const [booking] = await Booking.create([{
       user: req.user.id,
       ambulance: ambulanceId,
       pickupLocation,
@@ -52,7 +64,10 @@ exports.createBooking = async (req, res, next) => {
       fare,
       paymentMethod,
       patientConsent,
-    });
+    }], { session });
+
+    await session.commitTransaction();
+    transactionActive = false;
 
     await booking.populate([
       { path: 'user', select: 'name phone email' },
@@ -67,7 +82,7 @@ exports.createBooking = async (req, res, next) => {
       message: 'New booking request received',
     });
 
-    // Also notify driver's personal room (so they get it even before joining ambulance room)
+    // Also notify driver's personal room
     const driverUser = await User.findOne({ _id: ambulance.owner });
     if (driverUser) {
       io.to(`user_${driverUser._id}`).emit('new_booking_request', {
@@ -85,7 +100,12 @@ exports.createBooking = async (req, res, next) => {
     res.status(201).json({ success: true, message: 'Booking created. Awaiting driver confirmation.', booking });
 
   } catch (error) {
+    if (transactionActive) {
+      await session.abortTransaction();
+    }
     next(error);
+  } finally {
+    session.endSession();
   }
 };
 
@@ -142,13 +162,7 @@ exports.updateBookingStatus = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Booking not found.' });
     }
 
-    const validTransitions = {
-      pending:     ['confirmed', 'rejected'],
-      confirmed:   ['in_progress', 'cancelled'],
-      in_progress: ['completed', 'cancelled'],
-    };
-
-    if (!validTransitions[booking.status]?.includes(status)) {
+    if (!VALID_TRANSITIONS[booking.status]?.includes(status)) {
       return res.status(400).json({
         success: false,
         message: `Cannot transition from '${booking.status}' to '${status}'.`,
@@ -157,11 +171,7 @@ exports.updateBookingStatus = async (req, res, next) => {
 
     // Clear any active simulator loops if trip ends
     if (['completed', 'cancelled', 'rejected'].includes(status)) {
-      const timers = simulationTimers.get(booking._id.toString());
-      if (timers) {
-        timers.forEach(clearTimeout);
-        simulationTimers.delete(booking._id.toString());
-      }
+      clearSimulation(booking._id);
     }
 
     booking.status = status;
@@ -202,44 +212,9 @@ exports.updateBookingStatus = async (req, res, next) => {
 
     res.json({ success: true, message: `Booking ${status}.`, booking });
 
-    // When driver starts the trip, simulate ambulance moving toward pickup
+    // Start ambulance movement simulation when driver begins trip
     if (status === 'in_progress') {
-      const bookingIdStr = booking._id.toString();
-      const userId       = booking.user.toString();
-      const ambulanceId  = booking.ambulance._id.toString();
-      const pickupCoords = booking.pickupLocation?.coordinates; // [lng, lat]
-      const amb          = await Ambulance.findById(ambulanceId);
-
-      if (amb?.currentLocation?.coordinates && pickupCoords) {
-        const [startLng, startLat] = amb.currentLocation.coordinates;
-        const [pickupLng, pickupLat] = pickupCoords;
-        const STEPS = 10;
-
-        for (let i = 0; i <= STEPS; i++) {
-          const frac = i / STEPS;
-          const stepLat = startLat + (pickupLat - startLat) * frac;
-          const stepLng = startLng + (pickupLng - startLng) * frac;
-          const etaMin  = Math.round((STEPS - i) * 0.4);
-
-          const timerId = setTimeout(() => {
-            io.to(`booking_${bookingIdStr}`).emit('ambulance_location', {
-              ambulanceId,
-              latitude:  stepLat,
-              longitude: stepLng,
-              eta:       etaMin,
-            });
-            io.to(`user_${userId}`).emit('ambulance_location', {
-              ambulanceId,
-              latitude:  stepLat,
-              longitude: stepLng,
-              eta:       etaMin,
-            });
-          }, i * 3000);
-          
-          if (!simulationTimers.has(bookingIdStr)) simulationTimers.set(bookingIdStr, []);
-          simulationTimers.get(bookingIdStr).push(timerId);
-        }
-      }
+      startMovementSimulation(booking);
     }
   } catch (error) {
     next(error);
@@ -319,7 +294,6 @@ exports.getAmbulanceBookings = async (req, res, next) => {
     const query = { ambulance: req.params.ambulanceId };
 
     if (status) {
-      // Support comma-separated statuses e.g. "confirmed,in_progress"
       const statuses = status.split(',').map((s) => s.trim());
       query.status = statuses.length === 1 ? statuses[0] : { $in: statuses };
     }
@@ -336,3 +310,6 @@ exports.getAmbulanceBookings = async (req, res, next) => {
     next(error);
   }
 };
+
+// Export shared transitions for admin controller
+exports.VALID_TRANSITIONS = VALID_TRANSITIONS;

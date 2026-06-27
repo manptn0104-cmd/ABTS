@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
+import { API_BASE_URL } from '../../utils/constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
@@ -58,7 +59,7 @@ export default function LoginScreen({ navigation }) {
     setOtpSending(true);
     try {
       const res = await fetch(
-        (process.env.EXPO_PUBLIC_API_URL || 'https://abts-backend.onrender.com') + '/api/auth/send-otp',
+        API_BASE_URL.replace('/api', '') + '/api/auth/send-otp',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -1,6 +1,7 @@
 const User      = require('../models/User');
 const Ambulance = require('../models/Ambulance');
 const Booking   = require('../models/Booking');
+const { VALID_TRANSITIONS } = require('./bookingController');
 
 // GET /api/admin/stats
 exports.getStats = async (req, res, next) => {
@@ -23,7 +24,7 @@ exports.getStats = async (req, res, next) => {
     // Total revenue from completed bookings
     const revenueAgg = await Booking.aggregate([
       { $match: { status: 'completed' } },
-      { $group: { _id: null, total: { $sum: '$estimatedFare' } } },
+      { $group: { _id: null, total: { $sum: '$fare.total' } } },
     ]);
     const totalRevenue = revenueAgg[0]?.total || 0;
 
@@ -71,13 +72,19 @@ exports.getAllBookings = async (req, res, next) => {
   }
 };
 
-// GET /api/admin/users
+// GET /api/admin/users?role=&page=1&limit=20
 exports.getAllUsers = async (req, res, next) => {
   try {
-    const role  = req.query.role;
-    const filter = role ? { role } : { role: { $in: ['user', 'driver'] } };
-    const users = await User.find(filter).sort({ createdAt: -1 });
-    res.json({ success: true, users });
+    const role    = req.query.role;
+    const page    = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit   = Math.min(100, parseInt(req.query.limit) || 20);
+    const skip    = (page - 1) * limit;
+    const filter  = role ? { role } : { role: { $in: ['user', 'driver'] } };
+    const [users, total] = await Promise.all([
+      User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      User.countDocuments(filter),
+    ]);
+    res.json({ success: true, users, total, page, pages: Math.ceil(total / limit) });
   } catch (error) {
     next(error);
   }
@@ -98,17 +105,39 @@ exports.getAllAmbulances = async (req, res, next) => {
 // PATCH /api/admin/bookings/:id/status
 exports.updateBookingStatus = async (req, res, next) => {
   try {
-    const { status } = req.body;
-    const allowed = ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled', 'rejected'];
-    if (!allowed.includes(status)) {
-      return res.status(400).json({ success: false, message: 'Invalid status.' });
-    }
-    const booking = await Booking.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    ).populate('user', 'name phone').populate('ambulance', 'vehicleNumber driverName');
+    const { status, rejectionReason } = req.body;
+    const booking = await Booking.findById(req.params.id)
+      .populate('user', 'name phone').populate('ambulance', 'vehicleNumber driverName');
     if (!booking) return res.status(404).json({ success: false, message: 'Booking not found.' });
+
+    if (!VALID_TRANSITIONS[booking.status]?.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot transition from '${booking.status}' to '${status}'.`,
+      });
+    }
+
+    booking.status = status;
+    if (status === 'rejected') {
+      booking.rejectionReason = rejectionReason || 'Rejected by admin';
+      await Ambulance.findByIdAndUpdate(booking.ambulance._id, { isAvailable: true });
+    }
+    if (status === 'confirmed') {
+      booking.confirmedAt = new Date();
+    }
+    if (status === 'in_progress') booking.startedAt = new Date();
+    if (status === 'completed') {
+      booking.completedAt = new Date();
+      await Ambulance.findByIdAndUpdate(booking.ambulance._id, {
+        isAvailable: true, $inc: { totalTrips: 1 },
+      });
+    }
+    if (status === 'cancelled') {
+      booking.cancelledAt = new Date();
+      await Ambulance.findByIdAndUpdate(booking.ambulance._id, { isAvailable: true });
+    }
+
+    await booking.save();
     res.json({ success: true, booking });
   } catch (error) {
     next(error);
@@ -149,7 +178,7 @@ exports.registerAmbulance = async (req, res, next) => {
       specializations: specializations || ['general'],
       facilities:      facilities      || {},
       owner:           ownerId,
-      currentLocation: { type: 'Point', coordinates: [77.5946, 12.9716], address: 'Bangalore' },
+      // currentLocation is intentionally omitted — driver's first GPS update will set it
     });
 
     res.status(201).json({ success: true, message: 'Ambulance registered successfully.', ambulance });
@@ -158,10 +187,14 @@ exports.registerAmbulance = async (req, res, next) => {
   }
 };
 
-// DELETE /api/admin/ambulances/:id  — deregister (permanently remove) an ambulance
+// DELETE /api/admin/ambulances/:id  — soft-delete (set isActive=false)
 exports.deregisterAmbulance = async (req, res, next) => {
   try {
-    const ambulance = await Ambulance.findByIdAndDelete(req.params.id);
+    const ambulance = await Ambulance.findByIdAndUpdate(
+      req.params.id,
+      { isActive: false, isAvailable: false },
+      { new: true }
+    );
     if (!ambulance) {
       return res.status(404).json({ success: false, message: 'Ambulance not found.' });
     }

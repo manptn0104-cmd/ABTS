@@ -6,6 +6,7 @@ const locationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Ambulance',
       required: true,
+      index: true,
     },
     booking: {
       type: mongoose.Schema.Types.ObjectId,
@@ -26,7 +27,11 @@ const locationSchema = new mongoose.Schema(
     speed:    { type: Number, default: 0 }, // km/h
     heading:  { type: Number, default: 0 }, // degrees 0-360
     accuracy: { type: Number, default: 0 }, // meters
-    timestamp: { type: Date, default: Date.now },
+    timestamp: { 
+      type: Date, 
+      default: Date.now,
+      expires: 86400, // TTL index: automatically deletes document after 24 hours (86400 seconds)
+    },
   },
   { timestamps: false }
 );

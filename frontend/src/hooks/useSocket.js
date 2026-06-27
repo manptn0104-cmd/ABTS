@@ -64,3 +64,11 @@ export const useSocket = () => {
 
   return { connect, disconnect, emit, on, off, socket: socketRef };
 };
+
+// Standalone disconnect for use outside React (e.g. Redux logout action)
+export const disconnectSocket = () => {
+  if (socketInstance) {
+    socketInstance.disconnect();
+    socketInstance = null;
+  }
+};
