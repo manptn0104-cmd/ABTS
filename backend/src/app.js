@@ -11,8 +11,7 @@ const bookingRoutes   = require('./routes/bookings');
 const trackingRoutes  = require('./routes/tracking');
 const adminRoutes     = require('./routes/admin');
 const supportRoutes   = require('./routes/support');
-const errorHandler = require('./middleware/errorHandler');
-const supportRoutes = require('./routes/support');
+const errorHandler    = require('./middleware/errorHandler');
 
 const app = express();
 
