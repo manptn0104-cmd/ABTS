@@ -1,5 +1,5 @@
-export const API_BASE_URL = 'http://localhost:5000/api';
-export const SOCKET_URL   = 'http://localhost:5000';
+export const API_BASE_URL = 'http://localhost:5001/api';
+export const SOCKET_URL   = 'http://localhost:5001';
 
 export const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
 
