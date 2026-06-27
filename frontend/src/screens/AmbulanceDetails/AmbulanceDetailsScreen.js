@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert,
+  View, Text, StyleSheet, ScrollView, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -10,8 +10,7 @@ import Button         from '../../components/common/Button';
 import Card           from '../../components/common/Card';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../../theme';
-import { getAmbulanceType, formatDistance, formatETA, formatCurrency, getAvailableFacilities } from '../../utils/helpers';
-import { FACILITIES } from '../../utils/constants';
+import { getAmbulanceType, formatDistance, formatETA, formatCurrency } from '../../utils/helpers';
 
 export default function AmbulanceDetailsScreen({ route, navigation }) {
   const { ambulanceId, location, searchText, selectedFacilities } = route.params || {};
@@ -28,7 +27,6 @@ export default function AmbulanceDetailsScreen({ route, navigation }) {
   }
 
   const typeConfig = getAmbulanceType(ambulance.type);
-  const allFacilities = FACILITIES;
 
   const handleBook = () => {
     if (!location) {
@@ -142,16 +140,6 @@ export default function AmbulanceDetailsScreen({ route, navigation }) {
           </View>
         </Card>
 
-        {/* Facilities */}
-        <Card shadow="light" style={styles.section}>
-          <Text style={styles.sectionTitle}>Facilities & Equipment</Text>
-          <View style={styles.facilitiesList}>
-            {allFacilities.map((f) => (
-              <FacilityRow key={f.key} facility={f} />
-            ))}
-          </View>
-        </Card>
-
         {/* Pricing */}
         <Card shadow="light" style={styles.section}>
           <Text style={styles.sectionTitle}>Pricing Details</Text>
@@ -223,12 +211,6 @@ const styles = StyleSheet.create({
   tripsChip:    { alignItems: 'center', backgroundColor: Colors.background, borderRadius: BorderRadius.md, padding: Spacing.sm },
   tripsNum:     { fontSize: 18, fontWeight: '800', color: Colors.primary },
   tripsLabel:   { fontSize: 11, color: Colors.textSecondary },
-  facilitiesList: { gap: 8 },
-  facilityRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, padding: Spacing.sm, borderRadius: BorderRadius.sm, backgroundColor: Colors.background },
-  facilityAvailable: { backgroundColor: '#F3F9FF' },
-  facilityName: { flex: 1, fontSize: 14, color: Colors.text },
-  facilityNA:   { color: Colors.textMuted },
-  facilityCheck:{ marginLeft: 'auto' },
   priceRow:     { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.divider },
   priceLabel:   { fontSize: 14, color: Colors.textSecondary },
   priceValue:   { fontSize: 14, fontWeight: '600', color: Colors.text },

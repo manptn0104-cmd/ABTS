@@ -39,6 +39,10 @@ export default function HomeScreen({ navigation }) {
     );
   };
 
+  const removeFacility = (id) => {
+    setSelectedFacilities((prev) => prev.filter((f) => f !== id));
+  };
+
   // Build individual facility query params for the backend (e.g. { oxygen: 'true', doctor: 'true' })
   const buildFacilityParams = (facilities) => {
     const params = {};
@@ -327,6 +331,69 @@ export default function HomeScreen({ navigation }) {
           </ScrollView>
         </View>
 
+        {/* CCTV Safety Card */}
+        <View style={styles.cctvCardContainer}>
+          <View style={styles.cctvCard}>
+            <MaterialCommunityIcons name="cctv" size={28} color={Colors.white} />
+            <View style={styles.cctvCardContent}>
+              <Text style={styles.cctvCardTitle}>🛡 CCTV Protected Ambulances</Text>
+              <Text style={styles.cctvCardSubtitle}>24/7 Safety Monitoring Enabled</Text>
+            </View>
+            <MaterialCommunityIcons name="shield-check" size={24} color={Colors.white} />
+          </View>
+        </View>
+
+        {/* Facilities & Equipment Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Facilities & Equipment</Text>
+          <View style={styles.facilitiesContainer}>
+            {facilities.map((facility) => {
+              const isSelected = selectedFacilities.includes(facility.id);
+              return (
+                <TouchableOpacity
+                  key={facility.id}
+                  style={[
+                    styles.facilityChip,
+                    isSelected && styles.facilityChipSelected,
+                  ]}
+                  onPress={() => {
+                    if (!isSelected) toggleFacility(facility.id);
+                  }}
+                  activeOpacity={isSelected ? 1 : 0.7}
+                >
+                  <MaterialCommunityIcons
+                    name={facility.icon}
+                    size={18}
+                    color={isSelected ? Colors.white : Colors.primary}
+                  />
+                  <Text
+                    style={[
+                      styles.facilityChipText,
+                      isSelected && styles.facilityChipTextSelected,
+                    ]}
+                  >
+                    {facility.label}
+                  </Text>
+                  {isSelected && (
+                    <TouchableOpacity
+                      onPress={() => removeFacility(facility.id)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={styles.facilityChipClose}
+                      activeOpacity={0.7}
+                    >
+                      <MaterialCommunityIcons
+                        name="close"
+                        size={16}
+                        color={Colors.white}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
         {/* Quick Book Button */}
         <TouchableOpacity style={styles.quickBookBtn} onPress={handleQuickBook} activeOpacity={0.85}>
           <MaterialCommunityIcons name="ambulance" size={26} color={Colors.white} />
@@ -566,5 +633,8 @@ const styles = StyleSheet.create({
   },
   facilityChipTextSelected: {
     color: Colors.white,
+  },
+  facilityChipClose: {
+    marginLeft: Spacing.xs,
   },
 });

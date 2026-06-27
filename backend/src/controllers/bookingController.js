@@ -84,6 +84,7 @@ exports.createBooking = async (req, res, next) => {
 
     res.status(201).json({ success: true, message: 'Booking created. Awaiting driver confirmation.', booking });
 
+    // ── Demo simulation: auto-progress booking so UI shows real flow ─────────
   } catch (error) {
     next(error);
   }

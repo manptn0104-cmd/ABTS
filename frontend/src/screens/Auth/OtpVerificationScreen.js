@@ -77,7 +77,7 @@ export default function OtpVerificationScreen({ route, navigation }) {
     setError('');
     try {
       const res = await fetch(
-        (process.env.EXPO_PUBLIC_API_URL || 'https://abts-backend.onrender.com') + '/api/auth/send-otp',
+        (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5001') + '/api/auth/send-otp',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

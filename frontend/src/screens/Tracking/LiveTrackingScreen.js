@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity, Alert,
   Animated, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,11 +25,9 @@ export default function LiveTrackingScreen({ route, navigation }) {
   const { current: booking, isLoading } = useSelector((s) => s.booking);
   const { user } = useSelector((s) => s.auth);
 
-  const [ambulanceLoc, setAmbulanceLoc]         = useState(null);
-  const [mapRegion, setMapRegion]               = useState(null);
-  const [eta, setEta]                           = useState(null);
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [isCancelling, setIsCancelling]         = useState(false);
+  const [ambulanceLoc, setAmbulanceLoc] = useState(null);
+  const [mapRegion, setMapRegion]       = useState(null);
+  const [eta, setEta]                   = useState(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   // Fetch booking data
@@ -112,20 +110,22 @@ export default function LiveTrackingScreen({ route, navigation }) {
     };
   }, [bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleCancel = () => setShowCancelConfirm(true);
-
-  const confirmCancel = async () => {
-    setIsCancelling(true);
-    try {
-      await dispatch(cancelBooking(bookingId));
-      // Navigate to Home tab after successful cancel
-      navigation.navigate('MainTabs', { screen: 'Home' });
-    } catch (e) {
-      console.warn('Cancel error:', e);
-    } finally {
-      setIsCancelling(false);
-      setShowCancelConfirm(false);
-    }
+  const handleCancel = () => {
+    Alert.alert(
+      'Cancel Booking',
+      'Are you sure you want to cancel this booking?',
+      [
+        { text: 'No' },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            await dispatch(cancelBooking(bookingId));
+            navigation.navigate('MainTabs');
+          },
+        },
+      ]
+    );
   };
 
   if (isLoading || !booking) {
@@ -227,36 +227,12 @@ export default function LiveTrackingScreen({ route, navigation }) {
 
         {/* Cancel button — only for pending/confirmed */}
         {['pending', 'confirmed'].includes(booking.status) && (
-          showCancelConfirm ? (
-            <View style={styles.confirmBox}>
-              <Text style={styles.confirmMsg}>Cancel this booking?</Text>
-              <View style={styles.confirmActions}>
-                <TouchableOpacity
-                  style={styles.confirmYes}
-                  onPress={confirmCancel}
-                  disabled={isCancelling}
-                >
-                  {isCancelling
-                    ? <ActivityIndicator color="#fff" size="small" />
-                    : <Text style={styles.confirmYesText}>Yes, Cancel</Text>}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.confirmNo}
-                  onPress={() => setShowCancelConfirm(false)}
-                  disabled={isCancelling}
-                >
-                  <Text style={styles.confirmNoText}>No, Keep</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <Button
-              title="Cancel Booking"
-              variant="outline"
-              onPress={handleCancel}
-              style={styles.cancelBtn}
-            />
-          )
+          <Button
+            title="Cancel Booking"
+            variant="outline"
+            onPress={handleCancel}
+            style={styles.cancelBtn}
+          />
         )}
 
         {/* Home button — always visible */}
@@ -336,17 +312,6 @@ const styles = StyleSheet.create({
   timelineLabel:     { fontSize: 10, color: Colors.textMuted, textAlign: 'center' },
   timelineLabelDone: { color: Colors.success, fontWeight: '600' },
   cancelBtn: { marginTop: Spacing.sm },
-  confirmBox: {
-    marginTop: Spacing.sm, backgroundColor: '#FFF3E0',
-    borderRadius: BorderRadius.lg, padding: Spacing.md,
-    borderWidth: 1, borderColor: '#FFCC80',
-  },
-  confirmMsg:     { fontSize: 14, fontWeight: '700', color: '#E65100', marginBottom: Spacing.sm, textAlign: 'center' },
-  confirmActions: { flexDirection: 'row', gap: 10 },
-  confirmYes:     { flex: 1, backgroundColor: Colors.error, borderRadius: BorderRadius.md, paddingVertical: 10, alignItems: 'center' },
-  confirmYesText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  confirmNo:      { flex: 1, borderRadius: BorderRadius.md, paddingVertical: 10, alignItems: 'center', borderWidth: 1.5, borderColor: Colors.border },
-  confirmNoText:  { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
   homeBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, marginTop: Spacing.sm, paddingVertical: 10,

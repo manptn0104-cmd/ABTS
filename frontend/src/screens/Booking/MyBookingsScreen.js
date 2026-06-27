@@ -69,8 +69,6 @@ export default function MyBookingsScreen({ navigation }) {
         dispatch(updateBookingInList({ bookingId, status: 'cancelled' }));
         // reload current tab so server-filtered lists stay consistent
         load(activeTab);
-        // Navigate to Home tab after cancellation
-        navigation.navigate('Home');
       }
     } catch (e) {
       // silently log; user can retry
