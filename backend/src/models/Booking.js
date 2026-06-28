@@ -75,6 +75,11 @@ const bookingSchema = new mongoose.Schema(
       ref: 'Ambulance',
       default: [],
     }],
+    candidateAmbulances: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Ambulance',
+      default: [],
+    }],
     patientDetails: {
       name:      { type: String },
       age:       { type: Number, min: 0, max: 150 },
