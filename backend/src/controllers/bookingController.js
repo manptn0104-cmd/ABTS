@@ -589,7 +589,13 @@ exports.rateBooking = async (req, res, next) => {
 exports.getAmbulanceBookings = async (req, res, next) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
-    const query = { ambulance: req.params.ambulanceId };
+    const query = {
+      $or: [
+        { ambulance: req.params.ambulanceId },
+        { candidateAmbulances: req.params.ambulanceId }
+      ],
+      rejectedAmbulances: { $ne: req.params.ambulanceId }
+    };
 
     if (status) {
       // Support comma-separated statuses e.g. "confirmed,in_progress"
