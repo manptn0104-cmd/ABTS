@@ -6,6 +6,143 @@ const { getIO } = require('../services/socketService');
 // Map to track and clear simulator timers to prevent memory leaks
 const simulationTimers = new Map();
 
+// Helper function to auto-reassign a booking to the next closest available ambulance
+const autoReassign = async (bookingId, previousAmbulanceId) => {
+  try {
+    const booking = await Booking.findById(bookingId);
+    if (!booking) return;
+
+    // Verify booking is still in a pending/rejected state (i.e. not confirmed, cancelled or completed)
+    if (booking.status !== 'pending' && booking.status !== 'rejected') return;
+
+    // Track previously rejected/timed out ambulance to prevent loop reassignment
+    if (previousAmbulanceId) {
+      if (!booking.rejectedAmbulances) booking.rejectedAmbulances = [];
+      if (!booking.rejectedAmbulances.includes(previousAmbulanceId)) {
+        booking.rejectedAmbulances.push(previousAmbulanceId);
+      }
+      // Revert the previous ambulance back to available
+      await Ambulance.findByIdAndUpdate(previousAmbulanceId, { isAvailable: true });
+    }
+
+    const [lng, lat] = booking.pickupLocation.coordinates;
+    const matchQuery = {
+      isAvailable: true,
+      _id: { $nin: booking.rejectedAmbulances || [] },
+    };
+
+    if (booking.requiredFacilities && booking.requiredFacilities.length > 0) {
+      booking.requiredFacilities.forEach((f) => {
+        matchQuery[`facilities.${f}`] = true;
+      });
+    }
+
+    // Find closest available ambulance matching facility/specialization requirements within 50km
+    const candidates = await Ambulance.aggregate([
+      {
+        $geoNear: {
+          near: { type: 'Point', coordinates: [lng, lat] },
+          distanceField: 'distance',
+          maxDistance: 50000,
+          query: matchQuery,
+          spherical: true,
+        },
+      },
+      { $limit: 1 },
+    ]);
+
+    const io = getIO();
+
+    if (candidates.length > 0) {
+      const newAmbulance = candidates[0];
+
+      // Claim the ambulance atomically
+      const claimed = await Ambulance.findOneAndUpdate(
+        { _id: newAmbulance._id, isAvailable: true },
+        { isAvailable: false },
+        { new: true }
+      );
+
+      if (!claimed) {
+        // Try again if another request concurrently claimed it
+        return autoReassign(bookingId, previousAmbulanceId);
+      }
+
+      // Reassign the booking
+      booking.ambulance = newAmbulance._id;
+      booking.status = 'pending'; // Reset status to pending for the new driver
+      booking.rejectionReason = null;
+      await booking.save();
+
+      await booking.populate([
+        { path: 'user', select: 'name phone email' },
+        { path: 'ambulance' },
+      ]);
+
+      // Set a 30-second timeout for the new driver to accept/timeout
+      const timeoutId = setTimeout(async () => {
+        await autoReassign(booking._id, newAmbulance._id);
+      }, 30000);
+
+      const bookingIdStr = booking._id.toString();
+      if (!simulationTimers.has(bookingIdStr)) {
+        simulationTimers.set(bookingIdStr, []);
+      }
+      simulationTimers.get(bookingIdStr).push(timeoutId);
+
+      // Notify the new driver
+      const driverUser = await User.findOne({ _id: newAmbulance.owner });
+      if (driverUser) {
+        io.to(`user_${driverUser._id}`).emit('new_booking_request', {
+          booking,
+          message: 'New booking request automatically assigned to you.',
+        });
+      }
+      io.to(`ambulance_${newAmbulance._id}`).emit('new_booking_request', {
+        booking,
+        message: 'New booking request received',
+      });
+
+      // Notify patient of the reassignment
+      io.to(`user_${booking.user}`).emit('booking_status_update', {
+        bookingId: booking._id,
+        status: 'pending',
+        message: `Your booking was reassigned to another nearby ambulance (${newAmbulance.vehicleNumber}).`,
+        booking,
+      });
+
+      io.to(`booking_${booking._id}`).emit('booking_status_update', {
+        status: 'pending',
+        booking,
+      });
+
+      console.log(`[AutoReassign] Booking ${booking._id} reassigned to ${newAmbulance.vehicleNumber}`);
+    } else {
+      // No candidates found - booking is rejected
+      booking.status = 'rejected';
+      booking.rejectionReason = 'No nearby available ambulances found matching your requirements.';
+      await booking.save();
+
+      // Notify patient of final rejection
+      io.to(`user_${booking.user}`).emit('booking_status_update', {
+        bookingId: booking._id,
+        status: 'rejected',
+        message: 'No available ambulances found matching your requirements.',
+        booking,
+      });
+
+      io.to(`booking_${booking._id}`).emit('booking_status_update', {
+        status: 'rejected',
+        booking,
+      });
+
+      console.log(`[AutoReassign Failed] No other ambulances available for Booking ${booking._id}`);
+    }
+  } catch (err) {
+    console.error('[AutoReassign Error]', err);
+  }
+};
+
 // POST /api/bookings
 exports.createBooking = async (req, res, next) => {
   let ambulance;
@@ -82,6 +219,17 @@ exports.createBooking = async (req, res, next) => {
       bookingId: booking._id,
       message: 'Booking submitted. Waiting for driver confirmation.',
     });
+
+    // Set a 30-second timeout for driver acceptance/timeout reassignment
+    const timeoutId = setTimeout(async () => {
+      await autoReassign(booking._id, ambulanceId);
+    }, 30000);
+
+    const bookingIdStr = booking._id.toString();
+    if (!simulationTimers.has(bookingIdStr)) {
+      simulationTimers.set(bookingIdStr, []);
+    }
+    simulationTimers.get(bookingIdStr).push(timeoutId);
 
     res.status(201).json({ success: true, message: 'Booking created. Awaiting driver confirmation.', booking });
 
@@ -160,8 +308,8 @@ exports.updateBookingStatus = async (req, res, next) => {
       });
     }
 
-    // Clear any active simulator loops if trip ends
-    if (['completed', 'cancelled', 'rejected'].includes(status)) {
+    // Clear any active simulator loops if trip ends or is accepted
+    if (['confirmed', 'completed', 'cancelled', 'rejected'].includes(status)) {
       const timers = simulationTimers.get(booking._id.toString());
       if (timers) {
         timers.forEach(clearTimeout);
@@ -206,6 +354,12 @@ exports.updateBookingStatus = async (req, res, next) => {
     io.to(`booking_${booking._id}`).emit('booking_status_update', { status, booking });
 
     res.json({ success: true, message: `Booking ${status}.`, booking });
+
+    if (status === 'rejected') {
+      setTimeout(async () => {
+        await autoReassign(booking._id, booking.ambulance._id);
+      }, 0);
+    }
 
     // When driver starts the trip, simulate ambulance moving toward pickup
     if (status === 'in_progress') {

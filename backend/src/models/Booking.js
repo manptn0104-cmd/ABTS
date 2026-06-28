@@ -51,6 +51,11 @@ const bookingSchema = new mongoose.Schema(
       enum: ['oxygen', 'saline', 'stretcher', 'nurse', 'doctor', 'ventilator', 'defibrillator', 'cctvCamera'],
       default: [],
     },
+    rejectedAmbulances: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Ambulance',
+      default: [],
+    }],
     patientDetails: {
       name:      { type: String },
       age:       { type: Number, min: 0, max: 150 },
