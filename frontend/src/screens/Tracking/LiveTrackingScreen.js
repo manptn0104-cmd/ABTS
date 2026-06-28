@@ -6,7 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchBookingById, cancelBooking, updateCurrentStatus } from '../../store/bookingSlice';
+import { fetchBookingById, cancelBooking, updateCurrentStatus, setCurrentBooking } from '../../store/bookingSlice';
 import { useSocket } from '../../hooks/useSocket';
 import MapComponent from '../../components/MapComponent';
 import Card  from '../../components/common/Card';
@@ -76,7 +76,11 @@ export default function LiveTrackingScreen({ route, navigation }) {
     };
 
     const handleStatusUpdate = (data) => {
-      dispatch(updateCurrentStatus(data.status));
+      if (data.booking) {
+        dispatch(setCurrentBooking(data.booking));
+      } else {
+        dispatch(updateCurrentStatus(data.status));
+      }
       if (data.status === 'completed') {
         if (Platform.OS === 'web') {
           const rate = window.confirm('Trip Completed!\n\nYour ambulance has arrived. Thank you!\n\nWould you like to rate the trip?');
