@@ -426,9 +426,10 @@ exports.updateBookingStatus = async (req, res, next) => {
       { path: 'ambulance' },
     ]);
 
-    // Notify user
+    // Notify user safely using raw user ID if populate returns null
+    const userNotificationId = booking.user?._id || booking.user;
     const io = getIO();
-    io.to(`user_${booking.user._id}`).emit('booking_status_update', {
+    io.to(`user_${userNotificationId}`).emit('booking_status_update', {
       bookingId: booking._id,
       status,
       message: `Your booking has been ${status}.`,
@@ -449,7 +450,7 @@ exports.updateBookingStatus = async (req, res, next) => {
     // When driver starts the trip, simulate ambulance moving toward pickup along OSRM road paths
     if (status === 'in_progress') {
       const bookingIdStr = booking._id.toString();
-      const userId       = booking.user._id.toString();
+      const userId       = userNotificationId.toString();
       const ambulanceId  = booking.ambulance._id.toString();
       const pickupCoords = booking.pickupLocation?.coordinates; // [lng, lat]
       const amb          = await Ambulance.findById(ambulanceId);
