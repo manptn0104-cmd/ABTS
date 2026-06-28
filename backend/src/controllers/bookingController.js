@@ -8,6 +8,7 @@ const simulationTimers = new Map();
 
 // POST /api/bookings
 exports.createBooking = async (req, res, next) => {
+  let ambulance;
   try {
     const {
       ambulanceId,
@@ -25,7 +26,7 @@ exports.createBooking = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'ambulanceId and pickupLocation are required.' });
     }
 
-    const ambulance = await Ambulance.findOneAndUpdate(
+    ambulance = await Ambulance.findOneAndUpdate(
       { _id: ambulanceId, isAvailable: true },
       { isAvailable: false },
       { new: true }
@@ -86,6 +87,9 @@ exports.createBooking = async (req, res, next) => {
 
     // ── Demo simulation: auto-progress booking so UI shows real flow ─────────
   } catch (error) {
+    if (ambulance) {
+      await Ambulance.findByIdAndUpdate(req.body.ambulanceId, { isAvailable: true });
+    }
     next(error);
   }
 };
