@@ -113,6 +113,9 @@ export default function LiveTrackingScreen({ route, navigation }) {
       if (!socket) return;
 
       socket.emit('join_booking_room', bookingId);
+      socket.on('connect', () => {
+        socket.emit('join_booking_room', bookingId);
+      });
       socket.on('ambulance_location', handleAmbulanceLoc);
       socket.on('booking_status_update', handleStatusUpdate);
     };
@@ -121,6 +124,7 @@ export default function LiveTrackingScreen({ route, navigation }) {
 
     return () => {
       if (socket) {
+        socket.off('connect');
         socket.emit('leave_booking_room', bookingId);
         socket.off('ambulance_location', handleAmbulanceLoc);
         socket.off('booking_status_update', handleStatusUpdate);

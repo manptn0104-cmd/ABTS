@@ -26,6 +26,14 @@ const bookingSchema = new mongoose.Schema(
       coordinates: {
         type: [Number], // [longitude, latitude]
         required: true,
+        validate: {
+          validator: function(val) {
+            if (!val || val.length !== 2) return false;
+            const [lng, lat] = val;
+            return lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90;
+          },
+          message: 'Pickup coordinates must be valid [longitude, latitude] where longitude is -180 to 180 and latitude is -90 to 90.'
+        }
       },
       address: {
         type: String,
@@ -38,7 +46,18 @@ const bookingSchema = new mongoose.Schema(
         enum: ['Point'],
         default: 'Point',
       },
-      coordinates: { type: [Number] },
+      coordinates: {
+        type: [Number],
+        validate: {
+          validator: function(val) {
+            if (!val || val.length === 0) return true;
+            if (val.length !== 2) return false;
+            const [lng, lat] = val;
+            return lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90;
+          },
+          message: 'Drop coordinates must be valid [longitude, latitude] where longitude is -180 to 180 and latitude is -90 to 90.'
+        }
+      },
       address: { type: String },
     },
     emergencyType: {
@@ -124,8 +143,8 @@ const bookingSchema = new mongoose.Schema(
 );
 
 bookingSchema.index({ pickupLocation: '2dsphere' });
-bookingSchema.index({ user: 1, status: 1 });
-bookingSchema.index({ ambulance: 1, status: 1 });
+bookingSchema.index({ user: 1, status: 1, createdAt: -1 });
+bookingSchema.index({ ambulance: 1, status: 1, createdAt: -1 });
 bookingSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Booking', bookingSchema);
