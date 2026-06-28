@@ -78,15 +78,29 @@ export default function LiveTrackingScreen({ route, navigation }) {
     const handleStatusUpdate = (data) => {
       dispatch(updateCurrentStatus(data.status));
       if (data.status === 'completed') {
-        Alert.alert('Trip Completed', 'Your ambulance has arrived. Thank you!', [
-          { text: 'Rate Trip', onPress: () => navigation.replace('MyBookings') },
-          { text: 'Close',     onPress: () => navigation.navigate('MainTabs') },
-        ]);
+        if (Platform.OS === 'web') {
+          const rate = window.confirm('Trip Completed!\n\nYour ambulance has arrived. Thank you!\n\nWould you like to rate the trip?');
+          if (rate) {
+            navigation.replace('MyBookings');
+          } else {
+            navigation.navigate('MainTabs');
+          }
+        } else {
+          Alert.alert('Trip Completed', 'Your ambulance has arrived. Thank you!', [
+            { text: 'Rate Trip', onPress: () => navigation.replace('MyBookings') },
+            { text: 'Close',     onPress: () => navigation.navigate('MainTabs') },
+          ]);
+        }
       }
       if (data.status === 'rejected') {
-        Alert.alert('Booking Rejected', data.booking?.rejectionReason || 'Driver rejected the booking.', [
-          { text: 'Find Another', onPress: () => navigation.goBack() },
-        ]);
+        if (Platform.OS === 'web') {
+          window.alert(`Booking Rejected\n\n${data.booking?.rejectionReason || 'Driver rejected the booking.'}`);
+          navigation.goBack();
+        } else {
+          Alert.alert('Booking Rejected', data.booking?.rejectionReason || 'Driver rejected the booking.', [
+            { text: 'Find Another', onPress: () => navigation.goBack() },
+          ]);
+        }
       }
     };
 
@@ -111,21 +125,30 @@ export default function LiveTrackingScreen({ route, navigation }) {
   }, [bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCancel = () => {
-    Alert.alert(
-      'Cancel Booking',
-      'Are you sure you want to cancel this booking?',
-      [
-        { text: 'No' },
-        {
-          text: 'Yes, Cancel',
-          style: 'destructive',
-          onPress: async () => {
-            await dispatch(cancelBooking(bookingId));
-            navigation.navigate('MainTabs');
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm('Are you sure you want to cancel this booking?');
+      if (confirm) {
+        dispatch(cancelBooking(bookingId)).then(() => {
+          navigation.navigate('MainTabs');
+        });
+      }
+    } else {
+      Alert.alert(
+        'Cancel Booking',
+        'Are you sure you want to cancel this booking?',
+        [
+          { text: 'No' },
+          {
+            text: 'Yes, Cancel',
+            style: 'destructive',
+            onPress: async () => {
+              await dispatch(cancelBooking(bookingId));
+              navigation.navigate('MainTabs');
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   if (isLoading || !booking) {

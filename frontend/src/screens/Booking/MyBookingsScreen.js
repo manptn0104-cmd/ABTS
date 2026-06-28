@@ -84,14 +84,8 @@ export default function MyBookingsScreen({ navigation }) {
     const isCancellable = ['pending', 'confirmed'].includes(item.status);
 
     return (
-      <TouchableOpacity
+      <View
         style={[styles.card, Shadow.light]}
-        onPress={() => {
-          if (isActive) {
-            navigation.navigate('LiveTracking', { bookingId: item._id });
-          }
-        }}
-        activeOpacity={0.85}
       >
         {/* Header */}
         <View style={styles.cardHeader}>
@@ -177,7 +171,7 @@ export default function MyBookingsScreen({ navigation }) {
             )}
           </View>
         )}
-      </TouchableOpacity>
+      </View>
     );
   };
 
