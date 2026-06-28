@@ -533,16 +533,36 @@ exports.cancelBooking = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'This booking cannot be cancelled.' });
     }
 
+    // Clear any active timers (driver response timeout or travel simulation)
+    const timers = simulationTimers.get(booking._id.toString());
+    if (timers) {
+      timers.forEach(clearTimeout);
+      simulationTimers.delete(booking._id.toString());
+    }
+
     booking.status = 'cancelled';
     booking.cancelledAt = new Date();
     await booking.save();
-    await Ambulance.findByIdAndUpdate(booking.ambulance, { isAvailable: true });
+
+    // Release all candidate ambulances or current ambulance back to available pool
+    if (booking.candidateAmbulances && booking.candidateAmbulances.length > 0) {
+      await Ambulance.updateMany({ _id: { $in: booking.candidateAmbulances } }, { isAvailable: true });
+    } else {
+      await Ambulance.findByIdAndUpdate(booking.ambulance, { isAvailable: true });
+    }
 
     const io = getIO();
-    io.to(`ambulance_${booking.ambulance}`).emit('booking_cancelled', {
-      bookingId: booking._id,
-      message: 'Booking cancelled by user.',
-    });
+    // Notify targeted ambulances
+    const targetAmbulances = booking.candidateAmbulances && booking.candidateAmbulances.length > 0
+      ? booking.candidateAmbulances
+      : [booking.ambulance];
+
+    for (const ambId of targetAmbulances) {
+      io.to(`ambulance_${ambId}`).emit('booking_cancelled', {
+        bookingId: booking._id,
+        message: 'Booking cancelled by user.',
+      });
+    }
 
     res.json({ success: true, message: 'Booking cancelled.', booking });
   } catch (error) {
