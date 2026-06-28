@@ -84,7 +84,7 @@ function AppStack() {
       <Stack.Screen name="MainTabs"            component={MainTabs}               options={{ headerShown: false }} />
       <Stack.Screen name="AmbulanceList"       component={AmbulanceListScreen}    options={{ title: 'Nearby Ambulances' }} />
       <Stack.Screen name="AmbulanceDetails"    component={AmbulanceDetailsScreen} options={{ title: 'Ambulance Details' }} />
-      <Stack.Screen name="BookingConfirmation" component={BookingConfirmationScreen} options={{ title: 'Booking', headerBackVisible: false }} />
+      <Stack.Screen name="BookingConfirmation" component={BookingConfirmationScreen} options={{ title: 'Confirm Booking' }} />
       <Stack.Screen name="LiveTracking"        component={LiveTrackingScreen}     options={{ title: 'Live Tracking', headerBackVisible: false }} />
       <Stack.Screen name="HelpSupport"         component={HelpSupportScreen}      options={{ headerShown: false }} />
     </Stack.Navigator>

@@ -43,8 +43,8 @@
       ]
     ],
     "extra": {
-      "apiBaseUrl": "https://abts-backend.onrender.com/api",
-      "socketUrl": "https://abts-backend.onrender.com"
+      "apiBaseUrl": "http://localhost:5001/api",
+      "socketUrl": "http://localhost:5001"
     }
   }
 }

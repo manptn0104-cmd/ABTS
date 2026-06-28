@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity, Alert,
   Animated, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchBookingById, cancelBooking, updateCurrentStatus } from '../../store/bookingSlice';
+import { fetchBookingById, cancelBooking, updateCurrentStatus, setCurrentBooking } from '../../store/bookingSlice';
 import { useSocket } from '../../hooks/useSocket';
 import MapComponent from '../../components/MapComponent';
 import Card  from '../../components/common/Card';
@@ -25,11 +25,9 @@ export default function LiveTrackingScreen({ route, navigation }) {
   const { current: booking, isLoading } = useSelector((s) => s.booking);
   const { user } = useSelector((s) => s.auth);
 
-  const [ambulanceLoc, setAmbulanceLoc]         = useState(null);
-  const [mapRegion, setMapRegion]               = useState(null);
-  const [eta, setEta]                           = useState(null);
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [isCancelling, setIsCancelling]         = useState(false);
+  const [ambulanceLoc, setAmbulanceLoc] = useState(null);
+  const [mapRegion, setMapRegion]       = useState(null);
+  const [eta, setEta]                   = useState(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   // Fetch booking data
@@ -78,17 +76,35 @@ export default function LiveTrackingScreen({ route, navigation }) {
     };
 
     const handleStatusUpdate = (data) => {
-      dispatch(updateCurrentStatus(data.status));
+      if (data.booking) {
+        dispatch(setCurrentBooking(data.booking));
+      } else {
+        dispatch(updateCurrentStatus(data.status));
+      }
       if (data.status === 'completed') {
-        Alert.alert('Trip Completed', 'Your ambulance has arrived. Thank you!', [
-          { text: 'Rate Trip', onPress: () => navigation.replace('MyBookings') },
-          { text: 'Close',     onPress: () => navigation.navigate('MainTabs') },
-        ]);
+        if (Platform.OS === 'web') {
+          const rate = window.confirm('Trip Completed!\n\nYour ambulance has arrived. Thank you!\n\nWould you like to rate the trip?');
+          if (rate) {
+            navigation.replace('MyBookings');
+          } else {
+            navigation.navigate('MainTabs');
+          }
+        } else {
+          Alert.alert('Trip Completed', 'Your ambulance has arrived. Thank you!', [
+            { text: 'Rate Trip', onPress: () => navigation.replace('MyBookings') },
+            { text: 'Close',     onPress: () => navigation.navigate('MainTabs') },
+          ]);
+        }
       }
       if (data.status === 'rejected') {
-        Alert.alert('Booking Rejected', data.booking?.rejectionReason || 'Driver rejected the booking.', [
-          { text: 'Find Another', onPress: () => navigation.goBack() },
-        ]);
+        if (Platform.OS === 'web') {
+          window.alert(`Booking Rejected\n\n${data.booking?.rejectionReason || 'Driver rejected the booking.'}`);
+          navigation.goBack();
+        } else {
+          Alert.alert('Booking Rejected', data.booking?.rejectionReason || 'Driver rejected the booking.', [
+            { text: 'Find Another', onPress: () => navigation.goBack() },
+          ]);
+        }
       }
     };
 
@@ -97,6 +113,9 @@ export default function LiveTrackingScreen({ route, navigation }) {
       if (!socket) return;
 
       socket.emit('join_booking_room', bookingId);
+      socket.on('connect', () => {
+        socket.emit('join_booking_room', bookingId);
+      });
       socket.on('ambulance_location', handleAmbulanceLoc);
       socket.on('booking_status_update', handleStatusUpdate);
     };
@@ -105,6 +124,7 @@ export default function LiveTrackingScreen({ route, navigation }) {
 
     return () => {
       if (socket) {
+        socket.off('connect');
         socket.emit('leave_booking_room', bookingId);
         socket.off('ambulance_location', handleAmbulanceLoc);
         socket.off('booking_status_update', handleStatusUpdate);
@@ -112,19 +132,30 @@ export default function LiveTrackingScreen({ route, navigation }) {
     };
   }, [bookingId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleCancel = () => setShowCancelConfirm(true);
-
-  const confirmCancel = async () => {
-    setIsCancelling(true);
-    try {
-      await dispatch(cancelBooking(bookingId));
-      // Navigate to Home tab after successful cancel
-      navigation.navigate('MainTabs', { screen: 'Home' });
-    } catch (e) {
-      console.warn('Cancel error:', e);
-    } finally {
-      setIsCancelling(false);
-      setShowCancelConfirm(false);
+  const handleCancel = () => {
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm('Are you sure you want to cancel this booking?');
+      if (confirm) {
+        dispatch(cancelBooking(bookingId)).then(() => {
+          navigation.navigate('MainTabs');
+        });
+      }
+    } else {
+      Alert.alert(
+        'Cancel Booking',
+        'Are you sure you want to cancel this booking?',
+        [
+          { text: 'No' },
+          {
+            text: 'Yes, Cancel',
+            style: 'destructive',
+            onPress: async () => {
+              await dispatch(cancelBooking(bookingId));
+              navigation.navigate('MainTabs');
+            },
+          },
+        ]
+      );
     }
   };
 
@@ -227,36 +258,12 @@ export default function LiveTrackingScreen({ route, navigation }) {
 
         {/* Cancel button — only for pending/confirmed */}
         {['pending', 'confirmed'].includes(booking.status) && (
-          showCancelConfirm ? (
-            <View style={styles.confirmBox}>
-              <Text style={styles.confirmMsg}>Cancel this booking?</Text>
-              <View style={styles.confirmActions}>
-                <TouchableOpacity
-                  style={styles.confirmYes}
-                  onPress={confirmCancel}
-                  disabled={isCancelling}
-                >
-                  {isCancelling
-                    ? <ActivityIndicator color="#fff" size="small" />
-                    : <Text style={styles.confirmYesText}>Yes, Cancel</Text>}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.confirmNo}
-                  onPress={() => setShowCancelConfirm(false)}
-                  disabled={isCancelling}
-                >
-                  <Text style={styles.confirmNoText}>No, Keep</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <Button
-              title="Cancel Booking"
-              variant="outline"
-              onPress={handleCancel}
-              style={styles.cancelBtn}
-            />
-          )
+          <Button
+            title="Cancel Booking"
+            variant="outline"
+            onPress={handleCancel}
+            style={styles.cancelBtn}
+          />
         )}
 
         {/* Home button — always visible */}
@@ -336,17 +343,6 @@ const styles = StyleSheet.create({
   timelineLabel:     { fontSize: 10, color: Colors.textMuted, textAlign: 'center' },
   timelineLabelDone: { color: Colors.success, fontWeight: '600' },
   cancelBtn: { marginTop: Spacing.sm },
-  confirmBox: {
-    marginTop: Spacing.sm, backgroundColor: '#FFF3E0',
-    borderRadius: BorderRadius.lg, padding: Spacing.md,
-    borderWidth: 1, borderColor: '#FFCC80',
-  },
-  confirmMsg:     { fontSize: 14, fontWeight: '700', color: '#E65100', marginBottom: Spacing.sm, textAlign: 'center' },
-  confirmActions: { flexDirection: 'row', gap: 10 },
-  confirmYes:     { flex: 1, backgroundColor: Colors.error, borderRadius: BorderRadius.md, paddingVertical: 10, alignItems: 'center' },
-  confirmYesText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  confirmNo:      { flex: 1, borderRadius: BorderRadius.md, paddingVertical: 10, alignItems: 'center', borderWidth: 1.5, borderColor: Colors.border },
-  confirmNoText:  { color: Colors.textSecondary, fontSize: 13, fontWeight: '600' },
   homeBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, marginTop: Spacing.sm, paddingVertical: 10,

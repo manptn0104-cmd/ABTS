@@ -58,7 +58,7 @@ export default function LoginScreen({ navigation }) {
     setOtpSending(true);
     try {
       const res = await fetch(
-        (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000') + '/api/auth/send-otp',
+        (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5001') + '/api/auth/send-otp',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

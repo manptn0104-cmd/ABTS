@@ -21,7 +21,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
 
   const [emergencyType,  setEmergencyType]  = useState('general');
   const [paymentMethod,  setPaymentMethod]  = useState('cash');
-  const [patientDetails, setPatientDetails] = useState({ name: '', age: '', condition: '', bloodGroup: '' });
+  const [patientDetails, setPatientDetails] = useState({ name: '', age: '', condition: '', bloodGroup: 'unknown' });
   const [emergencyContact, setEmergencyContact] = useState({ name: '', phone: '' });
   const [showConfirmOverlay, setShowConfirmOverlay] = useState(false);
   const [requiredFacilities, setRequiredFacilities] = useState(selectedFacilities || []);
@@ -103,7 +103,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
     setPickupCoords(null); // coords invalidated until user picks suggestion
     setShowPickupSug(true);
     clearTimeout(pickupDebounceRef.current);
-    pickupDebounceRef.current = setTimeout(() => fetchPickupSuggestions(text), 1200);
+    pickupDebounceRef.current = setTimeout(() => fetchPickupSuggestions(text), 400);
   };
 
   const handleSelectPickupSuggestion = (s) => {
@@ -125,7 +125,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
     setDropAddress(text);
     setShowDropSug(true);
     clearTimeout(dropDebounceRef.current);
-    dropDebounceRef.current = setTimeout(() => fetchDropSuggestions(text), 1200);
+    dropDebounceRef.current = setTimeout(() => fetchDropSuggestions(text), 400);
   };
 
   const handleSelectDropSuggestion = (s) => {
@@ -283,6 +283,26 @@ export default function BookingConfirmationScreen({ route, navigation }) {
             multiline
             numberOfLines={3}
           />
+
+          {/* Blood Group */}
+          <Text style={[styles.inputLabel, { marginTop: Spacing.md, marginBottom: 8 }]}>Blood Group</Text>
+          <View style={styles.bloodGroupGrid}>
+            {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((bg) => (
+              <TouchableOpacity
+                key={bg}
+                style={[styles.bgChip, patientDetails.bloodGroup === bg && styles.bgChipActive]}
+                onPress={() => setPatientDetails((p) => ({ ...p, bloodGroup: bg }))}
+              >
+                <Text style={[styles.bgChipText, patientDetails.bloodGroup === bg && styles.bgChipTextActive]}>{bg}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={[styles.bgChip, patientDetails.bloodGroup === 'unknown' && styles.bgChipActive]}
+              onPress={() => setPatientDetails((p) => ({ ...p, bloodGroup: 'unknown' }))}
+            >
+              <Text style={[styles.bgChipText, patientDetails.bloodGroup === 'unknown' && styles.bgChipTextActive]}>Unknown</Text>
+            </TouchableOpacity>
+          </View>
 
           {/* Emergency Contact */}
           <Text style={[styles.inputLabel, { marginTop: Spacing.md, marginBottom: 8 }]}>Emergency Contact</Text>

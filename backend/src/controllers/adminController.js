@@ -23,7 +23,7 @@ exports.getStats = async (req, res, next) => {
     // Total revenue from completed bookings
     const revenueAgg = await Booking.aggregate([
       { $match: { status: 'completed' } },
-      { $group: { _id: null, total: { $sum: '$estimatedFare' } } },
+      { $group: { _id: null, total: { $sum: '$fare.total' } } },
     ]);
     const totalRevenue = revenueAgg[0]?.total || 0;
 

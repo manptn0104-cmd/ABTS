@@ -62,6 +62,14 @@ const ambulanceSchema = new mongoose.Schema(
       coordinates: {
         type: [Number], // [longitude, latitude]
         default: [0, 0],
+        validate: {
+          validator: function(val) {
+            if (!val || val.length !== 2) return false;
+            const [lng, lat] = val;
+            return lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90;
+          },
+          message: 'Ambulance coordinates must be valid [longitude, latitude] where longitude is -180 to 180 and latitude is -90 to 90.'
+        }
       },
       address: {
         type: String,

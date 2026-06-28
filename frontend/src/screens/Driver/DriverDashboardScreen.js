@@ -97,20 +97,12 @@ export default function DriverDashboardScreen() {
         );
       };
 
-      // When user cancels, remove the booking from the list immediately
-      const handleBookingCancelled = (data) => {
-        if (!mounted) return;
-        setBookings((prev) => prev.filter((b) => b._id !== data.bookingId));
-      };
-
       sock.on('new_booking_request', handleNewRequest);
       sock.on('booking_status_update', handleStatusUpdate);
-      sock.on('booking_cancelled', handleBookingCancelled);
 
       return () => {
         sock.off('new_booking_request', handleNewRequest);
         sock.off('booking_status_update', handleStatusUpdate);
-        sock.off('booking_cancelled', handleBookingCancelled);
       };
     };
 

@@ -39,6 +39,10 @@ export default function HomeScreen({ navigation }) {
     );
   };
 
+  const removeFacility = (id) => {
+    setSelectedFacilities((prev) => prev.filter((f) => f !== id));
+  };
+
   // Build individual facility query params for the backend (e.g. { oxygen: 'true', doctor: 'true' })
   const buildFacilityParams = (facilities) => {
     const params = {};
@@ -80,7 +84,7 @@ export default function HomeScreen({ navigation }) {
     setSearchText(text);
     setShowSuggestions(true);
     clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchSuggestions(text), 1200);
+    debounceRef.current = setTimeout(() => fetchSuggestions(text), 400);
   };
 
   const handleSelectSuggestion = (s) => {
@@ -121,11 +125,11 @@ export default function HomeScreen({ navigation }) {
     }, 200);
   };
 
-  // Fetch ambulances on mount immediately with fallback Bangalore coords
+  // Re-fetch ambulances when facility filters change (only if we already have a location)
   useEffect(() => {
-    const loc = manualLocation || location || { coords: { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude } };
-    const lat = loc.coords ? loc.coords.latitude : loc.latitude;
-    const lng = loc.coords ? loc.coords.longitude : loc.longitude;
+    if (!effectiveLocation) return;
+    const lat = effectiveLocation.coords ? effectiveLocation.coords.latitude : effectiveLocation.latitude;
+    const lng = effectiveLocation.coords ? effectiveLocation.coords.longitude : effectiveLocation.longitude;
 
     dispatch(fetchAmbulances({
       lat,
@@ -135,7 +139,7 @@ export default function HomeScreen({ navigation }) {
       limit: 20,
       ...buildFacilityParams(selectedFacilities),
     }));
-  }, [dispatch, selectedFacilities]);
+  }, [selectedFacilities]);
 
   // Re-fetch with actual GPS when available (only if user hasn't manually selected a location)
   useEffect(() => {
@@ -254,7 +258,6 @@ export default function HomeScreen({ navigation }) {
           ) : null}
         </View>
 
-
         {/* CCTV Safety Card */}
         <View style={styles.cctvCardContainer}>
           <View style={styles.cctvCard}>
@@ -299,7 +302,8 @@ export default function HomeScreen({ navigation }) {
                   {isSelected && (
                     <TouchableOpacity
                       style={{ marginLeft: 4 }}
-                      onPress={() => toggleFacility(facility.key)}
+                      onPress={() => removeFacility(facility.key)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <MaterialCommunityIcons name="close-circle" size={14} color={Colors.white} />
                     </TouchableOpacity>
@@ -566,5 +570,8 @@ const styles = StyleSheet.create({
   },
   facilityChipTextSelected: {
     color: Colors.white,
+  },
+  facilityChipClose: {
+    marginLeft: Spacing.xs,
   },
 });
