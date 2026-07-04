@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ABTS – Three-Role Live Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #0d1b2a 0%, #1b3a5c 50%, #0d1b2a 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 24px 16px 40px;
+    }
+
+    .top-bar {
+      width: 100%;
+      max-width: 1100px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-icon {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, #e53935, #b71c1c);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+    }
+
+    .brand-text h1 { font-size: 20px; font-weight: 800; color: #fff; }
+    .brand-text p  { font-size: 12px; color: rgba(255,255,255,0.55); margin-top: 1px; }
+
+    .status-bar {
+      display: flex; gap: 8px; align-items: center;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #4caf50; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .status-text { font-size: 12px; color: rgba(255,255,255,0.6); }
+
+    .phones-row {
+      display: flex;
+      gap: 40px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .phone-column {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .phone-label {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 18px;
+      border-radius: 100px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .label-user   { background: rgba(25,118,210,0.25); color: #64b5f6; border: 1px solid rgba(100,181,246,0.4); }
+    .label-driver { background: rgba(46,125,50,0.25);  color: #81c784; border: 1px solid rgba(129,199,132,0.4); }
+    .label-admin  { background: rgba(198,40,40,0.25);  color: #ef9a9a; border: 1px solid rgba(239,154,154,0.4); }
+
+    /* Phone shell */
+    .phone-shell {
+      position: relative;
+      width: 390px;
+      background: #1a1a1a;
+      border-radius: 50px;
+      padding: 14px;
+      box-shadow:
+        0 0 0 2px #333,
+        0 0 0 4px #111,
+        0 30px 80px rgba(0,0,0,0.7),
+        inset 0 1px 0 rgba(255,255,255,0.08);
+    }
+
+    .phone-shell::before {
+      content: '';
+      position: absolute;
+      top: 14px; left: 50%;
+      transform: translateX(-50%);
+      width: 100px; height: 28px;
+      background: #1a1a1a;
+      border-radius: 0 0 18px 18px;
+      z-index: 10;
+    }
+
+    /* Side buttons */
+    .phone-shell::after {
+      content: '';
+      position: absolute;
+      right: -4px; top: 120px;
+      width: 4px; height: 60px;
+      background: #333;
+      border-radius: 0 3px 3px 0;
+      box-shadow: 0 80px 0 #333;
+    }
+
+    .phone-screen {
+      width: 100%;
+      height: 780px;
+      border-radius: 38px;
+      overflow: hidden;
+      background: #000;
+    }
+
+    .phone-screen iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      display: block;
+    }
+
+    .phone-url {
+      font-size: 11px;
+      color: rgba(255,255,255,0.35);
+      text-align: center;
+      font-family: 'Courier New', monospace;
+    }
+
+    .credentials {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 16px;
+      padding: 16px 20px;
+      width: 390px;
+    }
+
+    .cred-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: rgba(255,255,255,0.4);
+      margin-bottom: 10px;
+    }
+
+    .cred-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+
+    .cred-row:last-child { margin-bottom: 0; }
+
+    .cred-icon { font-size: 14px; width: 20px; text-align: center; }
+
+    .cred-info { flex: 1; }
+    .cred-email { font-size: 13px; font-weight: 600; color: #fff; }
+    .cred-role  { font-size: 11px; color: rgba(255,255,255,0.45); margin-top: 1px; }
+
+    .cred-pass {
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.7);
+      padding: 3px 8px;
+      border-radius: 6px;
+    }
+
+    .separator {
+      width: 1px; height: 200px;
+      background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.15), transparent);
+      margin: 0 4px;
+    }
+
+    @media (max-width: 900px) {
+      .separator { display: none; }
+      .phones-row { gap: 48px; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="top-bar">
+    <div class="brand">
+      <div class="brand-icon">🚑</div>
+      <div class="brand-text">
+        <h1>ABTS</h1>
+        <p>Ambulance Booking &amp; Tracking System</p>
+      </div>
+    </div>
+    <div class="status-bar">
+      <div class="dot"></div>
+      <div class="status-text">Live Demo &nbsp;·&nbsp; Backend :5000 &nbsp;·&nbsp; User :8081 &nbsp;·&nbsp; Driver :8082 &nbsp;·&nbsp; Admin :8083</div>
+    </div>
+  </div>
+
+  <div class="phones-row">
+
+    <!-- USER PHONE -->
+    <div class="phone-column">
+      <div class="phone-label label-user">👤 Patient / User</div>
+
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <iframe src="http://localhost:8081" title="User App" allow="geolocation"></iframe>
+        </div>
+      </div>
+
+      <div class="phone-url">localhost:8081</div>
+
+      <div class="credentials">
+        <div class="cred-title">Demo Credentials</div>
+        <div class="cred-row">
+          <span class="cred-icon">🧑‍⚕️</span>
+          <div class="cred-info">
+            <div class="cred-email">user@abts.com</div>
+            <div class="cred-role">Patient account</div>
+          </div>
+          <div class="cred-pass">User@123</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="separator"></div>
+
+    <!-- DRIVER PHONE -->
+    <div class="phone-column">
+      <div class="phone-label label-driver">🚑 Driver</div>
+
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <iframe src="http://localhost:8082" title="Driver App" allow="geolocation"></iframe>
+        </div>
+      </div>
+
+      <div class="phone-url">localhost:8082</div>
+
+      <div class="credentials">
+        <div class="cred-title">Demo Driver Accounts</div>
+        <div class="cred-row">
+          <span class="cred-icon">🚘</span>
+          <div class="cred-info">
+            <div class="cred-email">driver1@abts.com</div>
+            <div class="cred-role">KA01 – Ravi Kumar</div>
+          </div>
+          <div class="cred-pass">Driver@123</div>
+        </div>
+        <div class="cred-row">
+          <span class="cred-icon">🚘</span>
+          <div class="cred-info">
+            <div class="cred-email">driver2@abts.com</div>
+            <div class="cred-role">KA03 – Priya Singh</div>
+          </div>
+          <div class="cred-pass">Driver@123</div>
+        </div>
+        <div class="cred-row">
+          <span class="cred-icon">🚘</span>
+          <div class="cred-info">
+            <div class="cred-email">driver10@abts.com</div>
+            <div class="cred-role">KA10 – Padma Venkat</div>
+          </div>
+          <div class="cred-pass">Driver@123</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="separator"></div>
+
+    <!-- ADMIN PHONE -->
+    <div class="phone-column">
+      <div class="phone-label label-admin">🛡️ Admin</div>
+
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <iframe src="http://localhost:8083" title="Admin App" allow="geolocation"></iframe>
+        </div>
+      </div>
+
+      <div class="phone-url">localhost:8083</div>
+
+      <div class="credentials">
+        <div class="cred-title">Admin Credentials</div>
+        <div class="cred-row">
+          <span class="cred-icon">👑</span>
+          <div class="cred-info">
+            <div class="cred-email">admin@abts.com</div>
+            <div class="cred-role">System Administrator</div>
+          </div>
+          <div class="cred-pass">Admin@123</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</body>
+</html>
