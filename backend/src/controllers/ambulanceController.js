@@ -29,8 +29,7 @@ exports.getAmbulances = async (req, res, next) => {
     const skip = (Number(page) - 1) * Number(limit);
 
     if (lat && lng) {
-      // Fetch near matches using aggregation (retrieve up to 100 to ensure sorting is comprehensive)
-      let rawAmbulances = await Ambulance.aggregate([
+      ambulances = await Ambulance.aggregate([
         {
           $geoNear: {
             near: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
@@ -38,6 +37,17 @@ exports.getAmbulances = async (req, res, next) => {
             maxDistance: parseInt(maxDistance),
             query: filterQuery,
             spherical: true,
+          },
+        },
+        { $skip: skip },
+        { $limit: parseInt(limit) },
+        {
+          $addFields: {
+            distanceKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
+            // ETA at avg speed of 40 km/h, in minutes
+            estimatedArrivalMin: {
+              $round: [{ $multiply: [{ $divide: ['$distance', 1000] }, 1.5] }, 0],
+            },
           },
         },
         {
@@ -51,72 +61,6 @@ exports.getAmbulances = async (req, res, next) => {
         },
         { $unwind: { path: '$ownerDetails', preserveNullAndEmptyArrays: true } },
       ]);
-
-      const { calculateSmartETA, calculateRankScore, getTrafficLabel, getMotionLabel } = require('../utils/etaPredictor');
-
-      // Map and predict smart ETA and rank score for each ambulance
-      let rankedAmbulances = rawAmbulances.map((amb) => {
-        const distanceMeters = amb.distance || 0;
-        
-        // Extract simulated or real parameters
-        const currentSpeed = amb.currentSpeed !== undefined ? amb.currentSpeed : 40;
-        const trafficLevel = amb.trafficLevel || 'clear';
-        const roadType = amb.roadType || 'main_road';
-        const signalsCount = amb.signalsCount !== undefined ? amb.signalsCount : 1;
-        const motionStatus = amb.motionStatus || 'moving';
-
-        const smartETA = calculateSmartETA({
-          distanceMeters,
-          currentSpeed,
-          trafficLevel,
-          roadType,
-          signalsCount,
-          motionStatus,
-        });
-
-        const rankScore = calculateRankScore({
-          smartETA,
-          ambulanceType: amb.type,
-          emergencyType,
-          ratingAverage: amb.rating?.average || 0,
-          facilities: amb.facilities || {},
-        });
-
-        return {
-          ...amb,
-          distanceKm: parseFloat((distanceMeters / 1000).toFixed(2)),
-          estimatedArrivalMin: smartETA, // Dynamic real-time smart ETA
-          smartRankScore: rankScore,
-          trafficLevel: trafficLevel,
-          trafficLabel: getTrafficLabel(trafficLevel),
-          motionStatus: motionStatus,
-          motionLabel: getMotionLabel(motionStatus),
-          currentSpeed,
-          roadType,
-          signalsCount,
-          isFastestArrival: false,
-        };
-      });
-
-      // Sort by Smart Ranking Score ascending (lower score is better)
-      rankedAmbulances.sort((a, b) => a.smartRankScore - b.smartRankScore);
-
-      // Flag the #1 absolute fastest arrival ambulance
-      if (rankedAmbulances.length > 0) {
-        let fastestIdx = 0;
-        for (let i = 1; i < rankedAmbulances.length; i++) {
-          if (rankedAmbulances[i].estimatedArrivalMin < rankedAmbulances[fastestIdx].estimatedArrivalMin) {
-            fastestIdx = i;
-          }
-        }
-        rankedAmbulances[fastestIdx].isFastestArrival = true;
-      }
-
-      // Paginate the final sorted list
-      const parsedLimit = parseInt(limit);
-      const parsedPage = parseInt(page);
-      const startIndex = (parsedPage - 1) * parsedLimit;
-      ambulances = rankedAmbulances.slice(startIndex, startIndex + parsedLimit);
     } else {
       ambulances = await Ambulance.find(filterQuery)
         .populate('owner', 'name phone')

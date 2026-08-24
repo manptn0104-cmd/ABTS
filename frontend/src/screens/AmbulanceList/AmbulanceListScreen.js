@@ -18,6 +18,12 @@ export default function AmbulanceListScreen({ route, navigation }) {
   const dispatch = useDispatch();
   const { list, isLoading, total, filters } = useSelector((s) => s.ambulance);
 
+  console.log('========== RUNTIME FILTER CHECK ==========');
+  console.log('Redux filters:', filters);
+  console.log('filters.type:', filters?.type);
+  console.log('filters.type JSON:', JSON.stringify(filters?.type));
+  console.log('==========================================');
+
   const [showFilter, setShowFilter] = useState(false);
   const [sort, setSort]             = useState('distance'); // distance | rating | price
   const [page, setPage]             = useState(1);

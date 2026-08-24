@@ -46,6 +46,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   const [relation, setRelation] = useState('');
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [riskAccepted, setRiskAccepted] = useState(false);
+  const [reverseGeocodedAddress, setReverseGeocodedAddress] = useState('');
 
   // Validation error states
   const [patientNameError, setPatientNameError] = useState('');
@@ -84,6 +85,17 @@ export default function BookingConfirmationScreen({ route, navigation }) {
     }));
   }, [pickupCoords]);
 
+  const nominatimReverse = useCallback(async (lat, lng) => {
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`;
+      const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+      const data = await res.json();
+      return data.display_name || '';
+    } catch (_) {
+      return '';
+    }
+  }, []);
+
   const fetchDropSuggestions = useCallback(async (query) => {
     if (!query || query.length < 3) { setDropSuggestions([]); return; }
     setDropSugLoading(true);
@@ -108,6 +120,30 @@ export default function BookingConfirmationScreen({ route, navigation }) {
 
   // Clear any stale booking from previous session on mount
   useEffect(() => { dispatch(clearCurrent()); }, [dispatch]);
+
+  // Ref to track current reverse geocoding request
+  const reverseGeocodeRef = useRef(null);
+
+  // Reverse geocode pickup coordinates on mount or when coordinates change
+  useEffect(() => {
+    if (pickupCoords?.latitude && pickupCoords?.longitude) {
+      const currentCoords = `${pickupCoords.latitude},${pickupCoords.longitude}`;
+      reverseGeocodeRef.current = currentCoords;
+
+      nominatimReverse(pickupCoords.latitude, pickupCoords.longitude)
+        .then((address) => {
+          // Only update if this is still the current request
+          if (reverseGeocodeRef.current === currentCoords) {
+            setReverseGeocodedAddress(address);
+          }
+        })
+        .catch(() => {
+          if (reverseGeocodeRef.current === currentCoords) {
+            setReverseGeocodedAddress('');
+          }
+        });
+    }
+  }, [pickupCoords, nominatimReverse]);
 
   // Debug: Log blood group changes
   useEffect(() => {
@@ -263,7 +299,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
       pickupLocation: {
         type: 'Point',
         coordinates: [resolvedPickup.longitude, resolvedPickup.latitude],
-        address: pickupAddress || 'Current Location',
+        address: reverseGeocodedAddress || pickupAddress || 'Current Location',
       },
       dropLocation: (dropCoords && dropAddress)
         ? {
@@ -429,12 +465,9 @@ export default function BookingConfirmationScreen({ route, navigation }) {
           <View style={styles.pickupReadonlyBox}>
             <MaterialCommunityIcons name="map-marker-check" size={24} color={Colors.primary} />
             <View style={styles.pickupTextContainer}>
-              <Text style={styles.pickupAddress} numberOfLines={2}>{pickupAddress}</Text>
-              {pickupCoords && (
-                <Text style={styles.pickupCoords}>
-                  {pickupCoords.latitude.toFixed(5)}, {pickupCoords.longitude.toFixed(5)}
-                </Text>
-              )}
+              <Text style={styles.pickupAddress} numberOfLines={2}>
+                {reverseGeocodedAddress || pickupAddress}
+              </Text>
             </View>
           </View>
         </Card>
@@ -779,15 +812,9 @@ export default function BookingConfirmationScreen({ route, navigation }) {
             <View style={styles.overlayLocationBox}>
               <MaterialCommunityIcons name="map-marker" size={20} color={Colors.primary} />
               <Text style={styles.overlayLocationText}>
-                {pickupAddress.trim() || 'Current GPS Location'}
+                {reverseGeocodedAddress || pickupAddress.trim() || 'Current GPS Location'}
               </Text>
             </View>
-
-            {pickupCoords && (
-              <Text style={styles.overlayCoords}>
-                {pickupCoords.latitude.toFixed(5)}, {pickupCoords.longitude.toFixed(5)}
-              </Text>
-            )}
 
             <Text style={styles.overlayQuestion}>Is this the correct pickup location?</Text>
 
