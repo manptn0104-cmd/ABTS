@@ -12,6 +12,12 @@ const bookingSchema = new mongoose.Schema(
       ref: 'Ambulance',
       required: true,
     },
+    // Denormalized snapshot of the assigned ambulance's organization; not yet populated at creation.
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+      index: true,
+    },
     status: {
       type: String,
       enum: ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled', 'rejected', 'unavailable'],

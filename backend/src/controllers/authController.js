@@ -3,8 +3,9 @@ const { validationResult } = require('express-validator');
 const User = require('../models/User');
 const Otp  = require('../models/Otp');
 
-const generateToken = (id) =>
-  jwt.sign({ id }, process.env.JWT_SECRET, {
+// role is included for identification only — authorization always re-checks the DB user's role.
+const generateToken = (id, role) =>
+  jwt.sign({ id, role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 
@@ -27,7 +28,7 @@ exports.register = async (req, res, next) => {
     // Only allow 'user' or 'driver' roles on self-registration
     const allowedRole = ['user', 'driver'].includes(role) ? role : 'user';
     const user = await User.create({ name, email, phone, password, role: allowedRole });
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, user.role);
 
     res.status(201).json({
       success: true,
@@ -55,7 +56,8 @@ exports.login = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Invalid email or password.' });
     }
 
-    const token = generateToken(user._id);
+    // Role comes only from the DB record — the request body's role (if any) is ignored above.
+    const token = generateToken(user._id, user.role);
     res.json({ success: true, message: 'Login successful.', token, user });
   } catch (error) {
     next(error);
@@ -230,7 +232,7 @@ exports.verifyOtp = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
 
-    const token = generateToken(user._id);
+    const token = generateToken(user._id, user.role);
     res.json({ success: true, message: 'OTP verified. Login successful.', token, user });
   } catch (error) {
     next(error);

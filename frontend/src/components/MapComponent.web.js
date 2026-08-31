@@ -1,156 +1,306 @@
-import React, { useRef, useEffect, useCallback } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useRef, useEffect, useState } from 'react';
+import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
+import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 
-// Self-contained Leaflet map loaded via srcdoc — no API key needed
-const MAP_HTML = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    html,body,#map{width:100%;height:100%;overflow:hidden}
-  </style>
-</head>
-<body>
-  <div id="map"></div>
-  <script>
-    var map = L.map('map',{zoomControl:true,attributionControl:false});
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
-    map.setView([19.076,72.8777],13);
-
-    var userMarker=null, ambMarker=null, routeLine=null;
-
-    var userIcon = L.divIcon({
-      html:'<div style="width:16px;height:16px;border-radius:50%;background:#2563EB;border:3px solid #fff;box-shadow:0 2px 8px rgba(37,99,235,.6)"></div>',
-      iconSize:[16,16],iconAnchor:[8,8],className:''
+// Module‑level promise to ensure the Google Maps script is loaded only once
+let googleMapsPromise = null;
+function loadGoogleMaps() {
+  if (!googleMapsPromise) {
+    // Configure the loader options (key, version, etc.)
+    setOptions({
+      key: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
+      v: 'weekly',
     });
-    var ambIcon = L.divIcon({
-      html:'<div style="font-size:26px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.5))">&#x1F691;</div>',
-      iconSize:[28,28],iconAnchor:[14,14],className:''
-    });
+    // Import the Maps library – this returns a promise that resolves when the script is ready
+    googleMapsPromise = importLibrary('maps');
+  }
+  return googleMapsPromise;
+}
 
-    function updateRoute(){
-      if(!userMarker||!ambMarker) return;
-      var start = ambMarker.getLatLng();
-      var end = userMarker.getLatLng();
-      var url = 'https://router.project-osrm.org/route/v1/driving/' + start.lng + ',' + start.lat + ';' + end.lng + ',' + end.lat + '?overview=full&geometries=geojson';
+export default function MapComponent({
+  region,
+  userLocation,
+  ambulanceLocation,
+  ambulances = [],
+  style,
+}) {
+  const mapDivRef = useRef(null);
+  const mapRef = useRef(null);
+  const markersRef = useRef({
+    user: null,
+    ambulance: null,
+    list: {}, // keyed by ambulance _id
+  });
+  const routeRef = useRef(null);
+  // Track whether initial viewport has been set and previous ambulance ID for reassignment detection
+  const hasInitializedViewportRef = useRef(false);
+  const prevAmbulanceIdRef = useRef(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-      fetch(url)
-        .then(function(res) { return res.json(); })
-        .then(function(data) {
-          if (data.code === 'Ok' && data.routes && data.routes[0]) {
-            var coords = data.routes[0].geometry.coordinates.map(function(c) {
-              return [c[1], c[0]];
-            });
-            if(!routeLine){
-              routeLine=L.polyline(coords,{color:'#EF4444',weight:5,opacity:.85}).addTo(map);
-            } else {
-              routeLine.setLatLngs(coords);
-              routeLine.setStyle({color:'#EF4444',weight:5,dashArray:null});
-            }
-            try{ map.fitBounds(L.latLngBounds(coords),{padding:[50,50],maxZoom:15,animate:true}); }catch(e){}
-          } else {
-            fallbackRoute();
-          }
-        })
-        .catch(function(e) {
-          fallbackRoute();
-        });
-
-      function fallbackRoute() {
-        var pts = [start, end];
-        if(!routeLine){
-          routeLine=L.polyline(pts,{color:'#3B82F6',weight:4,dashArray:'10 6',opacity:.9}).addTo(map);
-        } else {
-          routeLine.setLatLngs(pts);
-          routeLine.setStyle({color:'#3B82F6',weight:4,dashArray:'10 6'});
-        }
-        try{ map.fitBounds(L.latLngBounds(pts),{padding:[50,50],maxZoom:15,animate:true}); }catch(e){}
-      }
-    }
-
-    window.addEventListener('message',function(e){
-      var d=e.data; if(!d||!d.type) return;
-      if(d.type==='setRegion'){
-        if(!ambMarker&&!userMarker) map.setView([d.lat,d.lng],d.zoom||14,{animate:true});
-      } else if(d.type==='setUserLocation'){
-        var ll=[d.lat,d.lng];
-        if(!userMarker){
-          userMarker=L.marker(ll,{icon:userIcon}).addTo(map).bindPopup('<b>&#x1F4CD; Pickup Location</b>');
-          if(!ambMarker) map.setView(ll,14);
-        } else { userMarker.setLatLng(ll); }
-        updateRoute();
-      } else if(d.type==='setAmbulanceLocation'){
-        var ll=[d.lat,d.lng];
-        if(!ambMarker){
-          ambMarker=L.marker(ll,{icon:ambIcon}).addTo(map).bindPopup('<b>&#x1F691; Ambulance en route</b>');
-        } else { ambMarker.setLatLng(ll); }
-        updateRoute();
-      }
-    });
-    window.parent.postMessage('map_ready','*');
-  </script>
-</body>
-</html>`;
-
-export default function MapComponent({ region, userLocation, ambulanceLocation, style }) {
-  const iframeRef = useRef(null);
-  const readyRef  = useRef(false);
-  const queueRef  = useRef([]);
-
-  const post = useCallback((msg) => {
-    if (readyRef.current && iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(msg, '*');
-    } else {
-      queueRef.current.push(msg);
-    }
-  }, []);
-
-  // Listen for the iframe's map_ready signal, then flush queued messages
+  // Initialise Google Map – runs once per component instance
   useEffect(() => {
-    const handler = (e) => {
-      if (e.data === 'map_ready') {
-        readyRef.current = true;
-        queueRef.current.forEach((m) => iframeRef.current?.contentWindow?.postMessage(m, '*'));
-        queueRef.current = [];
+    // Validate API key presence early
+    if (!process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY) {
+      setError('Google Maps API key is not configured.');
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    loadGoogleMaps()
+      .then(() => {
+        if (cancelled) return;
+        if (!window.google?.maps) {
+          throw new Error('Google Maps library not available after load');
+        }
+        const center = region
+          ? { lat: region.latitude, lng: region.longitude }
+          : { lat: 0, lng: 0 };
+        const map = new window.google.maps.Map(mapDivRef.current, {
+          center,
+          zoom: region?.latitudeDelta ? Math.round(16 - Math.log(region.latitudeDelta)) : 13,
+          mapTypeControl: false,
+          streetViewControl: false,
+        });
+        mapRef.current = map;
+        setLoading(false);
+      })
+      .catch((e) => {
+        console.error('Google Maps loader error:', e);
+        if (!cancelled) {
+          setError('Google Maps failed to load.');
+          setLoading(false);
+        }
+      });
+
+    // Cleanup on unmount
+    return () => {
+      cancelled = true;
+      if (routeRef.current) {
+        routeRef.current.setMap(null);
+        routeRef.current = null;
+      }
+      Object.values(markersRef.current.list).forEach((m) => m.setMap(null));
+      if (markersRef.current.user) markersRef.current.user.setMap(null);
+      if (markersRef.current.ambulance) markersRef.current.ambulance.setMap(null);
+      if (mapRef.current) {
+        mapRef.current = null;
       }
     };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
   }, []);
 
-  useEffect(() => {
-    if (region) post({ type: 'setRegion', lat: region.latitude, lng: region.longitude });
-  }, [region?.latitude, region?.longitude, post]);
+  // Helper to create a coloured dot marker (uses SymbolPath from the loaded API)
+  const createDotMarker = (position, color, title) => {
+    return new window.google.maps.Marker({
+      position,
+      map: mapRef.current,
+      title,
+      icon: {
+        path: window.google.maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: color,
+        fillOpacity: 1,
+        strokeWeight: 2,
+        strokeColor: '#fff',
+      },
+    });
+  };
 
+  // Update user location marker
   useEffect(() => {
-    if (userLocation) post({ type: 'setUserLocation', lat: userLocation.latitude, lng: userLocation.longitude });
-  }, [userLocation?.latitude, userLocation?.longitude, post]);
+    if (!mapRef.current || !userLocation) return;
+    const pos = { lat: userLocation.latitude, lng: userLocation.longitude };
+    if (!markersRef.current.user) {
+      markersRef.current.user = createDotMarker(pos, '#2563EB', 'Your Location');
+    } else {
+      markersRef.current.user.setPosition(pos);
+    }
+    // Center map on user if ambulance not yet present
+    if (!markersRef.current.ambulance) {
+      mapRef.current.setCenter(pos);
+    }
+    updateRoute();
+  }, [userLocation]);
 
+  // Update single ambulance location marker (used for the primary ambulance display)
   useEffect(() => {
-    if (ambulanceLocation) post({ type: 'setAmbulanceLocation', lat: ambulanceLocation.latitude, lng: ambulanceLocation.longitude });
-  }, [ambulanceLocation?.latitude, ambulanceLocation?.longitude, post]);
+    if (!mapRef.current || !ambulanceLocation) return;
+    const pos = { lat: ambulanceLocation.latitude, lng: ambulanceLocation.longitude };
+    if (!markersRef.current.ambulance) {
+      markersRef.current.ambulance = createDotMarker(pos, '#EF4444', 'Ambulance');
+    } else {
+      markersRef.current.ambulance.setPosition(pos);
+    }
+    // After updating position, check if ambulance is near edge of viewport and pan gently if needed
+    if (mapRef.current && typeof mapRef.current.getBounds === 'function') {
+      const bounds = mapRef.current.getBounds();
+      if (bounds && typeof bounds.getNorthEast === 'function' && typeof bounds.getSouthWest === 'function') {
+        const ne = bounds.getNorthEast();
+        const sw = bounds.getSouthWest();
+        const latMargin = (ne.lat() - sw.lat()) * 0.2; // 20% margin
+        const lngMargin = (ne.lng() - sw.lng()) * 0.2;
+        const needsPan =
+          pos.lat > ne.lat() - latMargin ||
+          pos.lat < sw.lat() + latMargin ||
+          pos.lng > ne.lng() - lngMargin ||
+          pos.lng < sw.lng() + lngMargin;
+        if (needsPan) {
+          // Use panTo for a gentle transition
+          mapRef.current.panTo(pos);
+        }
+      }
+    }
+    updateRoute();
+  }, [ambulanceLocation]);
+
+  // Update an array of additional ambulance markers
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const existingIds = new Set(Object.keys(markersRef.current.list));
+    const newIds = new Set();
+    ambulances.forEach((amb) => {
+      const id = amb._id;
+      if (!id) return;
+      newIds.add(id);
+      const coords = amb.currentLocation?.coordinates;
+      if (!coords) return;
+      const [lng, lat] = coords;
+      const pos = { lat, lng };
+      if (!markersRef.current.list[id]) {
+        const marker = new window.google.maps.Marker({
+          position: pos,
+          map: mapRef.current,
+          title: amb.vehicleNumber,
+        });
+        markersRef.current.list[id] = marker;
+      } else {
+        markersRef.current.list[id].setPosition(pos);
+      }
+    });
+    // Remove any markers that are no longer in the list
+    existingIds.forEach((id) => {
+      if (!newIds.has(id)) {
+        markersRef.current.list[id].setMap(null);
+        delete markersRef.current.list[id];
+      }
+    });
+  }, [ambulances]);
+
+  // Draw route using OSRM – unchanged logic, but now guaranteed that the Maps API is loaded
+  const updateRoute = () => {
+    if (!mapRef.current) return;
+    const userMarker = markersRef.current.user;
+    const ambMarker = markersRef.current.ambulance;
+    if (!userMarker || !ambMarker) {
+      if (routeRef.current) {
+        routeRef.current.setMap(null);
+        routeRef.current = null;
+      }
+      return;
+    }
+    const start = ambMarker.getPosition();
+    const end = userMarker.getPosition();
+    const url = `https://router.project-osrm.org/route/v1/driving/${start.lng()},${start.lat()};${end.lng()},${end.lat()}?overview=full&geometries=geojson`;
+    fetch(url)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.code === 'Ok' && data.routes && data.routes[0]) {
+          const coords = data.routes[0].geometry.coordinates.map((c) => ({ lat: c[1], lng: c[0] }));
+          if (!routeRef.current) {
+            routeRef.current = new window.google.maps.Polyline({
+              path: coords,
+              strokeColor: '#EF4444',
+              strokeWeight: 5,
+              map: mapRef.current,
+            });
+          } else {
+            routeRef.current.setPath(coords);
+          }
+          // Initial viewport fitting is handled separately; avoid auto‑zoom on every update
+        } else {
+          fallbackRoute();
+        }
+      })
+      .catch(() => fallbackRoute());
+  };
+
+  const fallbackRoute = () => {
+    const userMarker = markersRef.current.user;
+    const ambMarker = markersRef.current.ambulance;
+    if (!userMarker || !ambMarker) return;
+    const pts = [ambMarker.getPosition(), userMarker.getPosition()];
+    if (!routeRef.current) {
+      routeRef.current = new window.google.maps.Polyline({
+        path: pts,
+        strokeColor: '#3B82F6',
+        strokeWeight: 4,
+        strokeOpacity: 0.9,
+        strokePattern: [{ type: 'dash', length: 10 }, { type: 'gap', length: 6 }],
+        map: mapRef.current,
+      });
+    } else {
+      routeRef.current.setPath(pts);
+      routeRef.current.setOptions({
+        strokeColor: '#3B82F6',
+        strokeWeight: 4,
+        strokePattern: [{ type: 'dash', length: 10 }, { type: 'gap', length: 6 }],
+      });
+    }
+    // Viewport fitting is handled separately; avoid auto‑zoom on every update
+  };
+
+  // Adjust viewport once on initial load or when ambulance reassignment occurs
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const userMarker = markersRef.current.user;
+    const ambMarker = markersRef.current.ambulance;
+    if (!userMarker || !ambMarker) return;
+    const ambId = ambulanceLocation?.id ?? ambulanceLocation?._id ?? null;
+    const needsFit = !hasInitializedViewportRef.current || ambId !== prevAmbulanceIdRef.current;
+    if (needsFit) {
+      const bounds = new window.google.maps.LatLngBounds();
+      bounds.extend(userMarker.getPosition());
+      bounds.extend(ambMarker.getPosition());
+      mapRef.current.fitBounds(bounds, { padding: 50, maxZoom: 15 });
+      hasInitializedViewportRef.current = true;
+      prevAmbulanceIdRef.current = ambId;
+    }
+  }, [userLocation, ambulanceLocation]);
+
+  // Route updates are handled in the individual location effects; no additional effect needed
+
+  if (error) {
+    return (
+      <View style={[styles.container, style]}>
+        <Text>{error}</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, style]}>
-      <iframe
-        ref={iframeRef}
-        srcDoc={MAP_HTML}
-        title="Live Tracking Map"
-        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
-      />
+      {loading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#2563EB" />
+        </View>
+      )}
+      <div ref={mapDivRef} style={{ width: '100%', height: '100%' }} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    position: 'relative',
-    overflow: 'hidden',
-    backgroundColor: '#e8f4f8',
+  container: { flex: 1, position: 'relative' },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    zIndex: 10,
   },
 });

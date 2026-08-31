@@ -14,7 +14,7 @@ import { Colors, Spacing, BorderRadius, Shadow } from '../../theme';
 import { DEFAULT_REGION } from '../../utils/constants';
 
 export default function AmbulanceListScreen({ route, navigation }) {
-  const { location, emergencyType, searchText, selectedFacilities = [] } = route.params || {};
+  const { selectedPickup, emergencyType, searchText, selectedFacilities = [] } = route.params || {};
   const dispatch = useDispatch();
   const { list, isLoading, total, filters } = useSelector((s) => s.ambulance);
 
@@ -37,14 +37,14 @@ export default function AmbulanceListScreen({ route, navigation }) {
   const buildParams = useCallback(() => {
     const params = { page, limit: 15, ...filters };
     // Always send coordinates — use actual GPS or fall back to Bangalore centre
-    const lat = location?.latitude  ?? DEFAULT_REGION.latitude;
-    const lng = location?.longitude ?? DEFAULT_REGION.longitude;
+    const lat = selectedPickup?.latitude ?? DEFAULT_REGION.latitude;
+    const lng = selectedPickup?.longitude ?? DEFAULT_REGION.longitude;
     params.lat         = lat;
     params.lng         = lng;
     params.maxDistance = 50000; // 50 km radius
     if (emergencyType) params.emergencyType = emergencyType;
     return params;
-  }, [page, filters, location, emergencyType]);
+  }, [page, filters, selectedPickup, emergencyType]);
 
   useEffect(() => {
     dispatch(fetchAmbulances(buildParams()));
@@ -67,7 +67,7 @@ export default function AmbulanceListScreen({ route, navigation }) {
       <View style={styles.resultRow}>
         <Text style={styles.resultText}>
           {total} ambulance{total !== 1 ? 's' : ''} found
-          {location ? ' nearby' : ''}
+          {selectedPickup ? ' nearby' : ''}
         </Text>
       </View>
 
@@ -131,7 +131,7 @@ export default function AmbulanceListScreen({ route, navigation }) {
               onPress={() =>
                 navigation.navigate('AmbulanceDetails', {
                   ambulanceId: item._id,
-                  location,
+                  selectedPickup,
                   searchText,
                   selectedFacilities,
                 })

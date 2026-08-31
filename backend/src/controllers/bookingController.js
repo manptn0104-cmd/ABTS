@@ -3,11 +3,26 @@ const Ambulance = require('../models/Ambulance');
 const User = require('../models/User');
 const { getIO } = require('../services/socketService');
 
+const getOrganizationFilter = (req) => (
+  req.user.role === 'superadmin' ? {} : { organizationId: req.user.organizationId }
+);
+
+const getMyBookingsFilter = (req) => {
+  const filter = getOrganizationFilter(req);
+  if (req.user.role === 'user') filter.user = req.user.id;
+  return filter;
+};
+
+const isAssignedDriver = (booking, req) => {
+  const owner = booking.ambulance?.owner?._id || booking.ambulance?.owner;
+  return Boolean(owner && String(owner) === String(req.user.id));
+};
+
 // POST /api/bookings
 exports.createBooking = async (req, res, next) => {
   try {
     console.log('REQ BODY:', req.body);
-    
+
     const {
       ambulanceId,
       pickupLocation,
@@ -31,9 +46,18 @@ exports.createBooking = async (req, res, next) => {
     if (!ambulance.isAvailable) {
       return res.status(409).json({ success: false, message: 'Ambulance is currently unavailable.' });
     }
+    // Tenant boundary is derived from the ambulance, never from client input.
+    if (!ambulance.organizationId) {
+      return res.status(409).json({ success: false, message: 'Selected ambulance is not yet associated with an organization.' });
+    }
+    // Patients (role: 'user') can book ambulances from any organization
+    // Admin and drivers must belong to the same organization as the ambulance
+    if (req.user.role !== 'superadmin' && req.user.role !== 'user' && String(req.user.organizationId) !== String(ambulance.organizationId)) {
+      return res.status(403).json({ success: false, message: 'Selected ambulance does not belong to your organization.' });
+    }
 
     const fare = {
-      base:  ambulance.basePrice,
+      base: ambulance.basePrice,
       perKm: ambulance.pricePerKm * estimatedDistance,
       total: ambulance.basePrice + ambulance.pricePerKm * estimatedDistance,
     };
@@ -41,6 +65,7 @@ exports.createBooking = async (req, res, next) => {
     const booking = await Booking.create({
       user: req.user.id,
       ambulance: ambulanceId,
+      organizationId: ambulance.organizationId,
       pickupLocation,
       dropLocation,
       emergencyType,
@@ -92,7 +117,12 @@ exports.createBooking = async (req, res, next) => {
 exports.getMyBookings = async (req, res, next) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
-    const query = { user: req.user.id };
+    console.log('[MY BOOKINGS DEBUG]', {
+      userId: req.user?.id,
+      role: req.user?.role,
+      organizationId: req.user?.organizationId,
+    });
+    const query = getMyBookingsFilter(req);
     if (status) query.status = status;
 
     const bookings = await Booking.find(query)
@@ -109,6 +139,7 @@ exports.getMyBookings = async (req, res, next) => {
 };
 
 // GET /api/bookings/:id
+// GET /api/bookings/:id
 exports.getBooking = async (req, res, next) => {
   try {
     const booking = await Booking.findById(req.params.id)
@@ -116,34 +147,94 @@ exports.getBooking = async (req, res, next) => {
       .populate('ambulance');
 
     if (!booking) {
-      return res.status(404).json({ success: false, message: 'Booking not found.' });
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found.',
+      });
     }
 
-    const isOwner = booking.user._id.toString() === req.user.id;
-    const isPrivileged = ['admin', 'driver'].includes(req.user.role);
-    if (!isOwner && !isPrivileged) {
-      return res.status(403).json({ success: false, message: 'Not authorized.' });
+    // Superadmin can access any booking.
+    if (req.user.role === 'superadmin') {
+      return res.json({
+        success: true,
+        booking,
+      });
     }
 
-    res.json({ success: true, booking });
+    // Organization isolation.
+    // Booking owner can access their own booking,
+    // regardless of the ambulance organization's organizationId.
+    if (
+      req.user.role === 'user' &&
+      String(booking.user?._id || booking.user) === String(req.user.id)
+    ) {
+      return res.json({
+        success: true,
+        booking,
+      });
+    }
+
+
+
+    // Organization isolation for admin/driver users.
+    if (
+      !booking.organizationId ||
+      !req.user.organizationId ||
+      String(booking.organizationId) !== String(req.user.organizationId)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to access this booking.',
+      });
+    }
+
+
+    // Assigned driver can access the booking.
+    if (
+      req.user.role === 'driver' &&
+      booking.ambulance &&
+      String(booking.ambulance.owner) === String(req.user.id)
+    ) {
+      return res.json({
+        success: true,
+        booking,
+      });
+    }
+
+    // Admin can access bookings in their organization.
+    if (req.user.role === 'admin') {
+      return res.json({
+        success: true,
+        booking,
+      });
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: 'You are not authorized to access this booking.',
+    });
   } catch (error) {
     next(error);
   }
 };
 
+
 // PUT /api/bookings/:id/status  (driver / admin)
 exports.updateBookingStatus = async (req, res, next) => {
   try {
     const { status, rejectionReason } = req.body;
-    const booking = await Booking.findById(req.params.id).populate('ambulance');
+    const booking = await Booking.findOne({ _id: req.params.id, ...getOrganizationFilter(req) }).populate('ambulance');
 
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found.' });
     }
+    if (req.user.role === 'driver' && !isAssignedDriver(booking, req)) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
 
     const validTransitions = {
-      pending:     ['confirmed', 'rejected'],
-      confirmed:   ['in_progress', 'cancelled'],
+      pending: ['confirmed', 'rejected'],
+      confirmed: ['in_progress', 'cancelled'],
       in_progress: ['completed', 'cancelled'],
     };
 
@@ -157,35 +248,49 @@ exports.updateBookingStatus = async (req, res, next) => {
     // Handle driver rejection with immediate reassignment
     if (status === 'rejected') {
       const ambulance = booking.ambulance;
-      console.log('[Driver Reject] Booking:', booking._id);
-      console.log('[Driver Reject] Ambulance:', ambulance?.vehicleNumber);
-      console.log('[Driver Reject] Starting immediate reassignment...');
+      console.log('[DRIVER REJECT] Booking:', booking._id);
+      console.log('[DRIVER REJECT] Ambulance:', ambulance?.vehicleNumber);
+      console.log('[DRIVER REJECT] Starting immediate reassignment...');
 
-      // 1. Release current ambulance and mark it available
+      // Verify the driver still owns this ambulance assignment
+      if (ambulance && String(ambulance.owner) !== String(req.user.id)) {
+        return res.status(409).json({ success: false, message: 'Ambulance assignment has changed.' });
+      }
+
+      // Release current ambulance back to pool
       if (ambulance) {
         await Ambulance.findByIdAndUpdate(ambulance._id, { isAvailable: true });
-        console.log(`[Driver Reject] Released ambulance ${ambulance.vehicleNumber} back to available pool`);
+        console.log(`[DRIVER REJECT] Released ambulance ${ambulance.vehicleNumber} back to available pool`);
       }
 
-      // 2. Find next best ambulance, excluding the rejected one and previous reassignments
-      const previousIds = booking.previousAssignments.map((p) => p.ambulanceId);
-      if (ambulance) {
-        previousIds.push(ambulance._id);
-      }
+      // Wait exactly 2 seconds before searching for next ambulance
+      await new Promise(r => setTimeout(r, 2000));
+      console.log('[DRIVER REJECT] Waiting 2 seconds completed');
+
+      // Gather previous assignments, exclude current ambulance
+      const previousIds = booking.previousAssignments.map(p => p.ambulanceId);
+      if (ambulance) previousIds.push(ambulance._id);
 
       const { findNextBestAmbulance, reassignBooking } = require('../services/bookingTimeoutService');
       const nextAmbulance = await findNextBestAmbulance(booking, previousIds);
-
-      console.log('[Driver Reject] Next ambulance found:', nextAmbulance?.vehicleNumber);
+      console.log('[DRIVER REJECT] Next ambulance found:', nextAmbulance?.vehicleNumber);
 
       if (nextAmbulance) {
-        // We found a next ambulance! Assign it immediately.
+        // Use atomic claim flag to avoid race conditions
+        const claim = await Booking.findOneAndUpdate(
+          { _id: booking._id, reassigning: { $ne: true } },
+          { $set: { reassigning: true } },
+          { new: true }
+        );
+        if (!claim) {
+          console.warn('[DRIVER REJECT] Booking already being reassigned by another process');
+          return res.json({ success: true, message: 'Reassignment already in progress.' });
+        }
         const reason = `Driver Rejected: ${rejectionReason || 'No reason provided'}`;
         await reassignBooking(booking, nextAmbulance, ambulance?._id, reason);
+        // Clear claim flag
+        await Booking.findByIdAndUpdate(booking._id, { $unset: { reassigning: '' } });
 
-        console.log('[Driver Reject] Reassignment completed');
-
-        // Populate for response
         await booking.populate([
           { path: 'user', select: 'name phone email' },
           { path: 'ambulance' },
@@ -197,12 +302,10 @@ exports.updateBookingStatus = async (req, res, next) => {
           booking,
         });
       } else {
-        // No next ambulance found. Mark the booking as Rejected.
-        console.log('[Driver Reject] No available ambulances for reassignment.');
+        // No ambulance available – mark as rejected and record history
+        console.log('[DRIVER REJECT] No available ambulances for reassignment.');
         booking.status = 'rejected';
         booking.rejectionReason = rejectionReason || 'No available ambulances in the area.';
-
-        // Push the rejection to history
         if (ambulance) {
           booking.previousAssignments.push({
             ambulanceId: ambulance._id,
@@ -214,17 +317,8 @@ exports.updateBookingStatus = async (req, res, next) => {
             vehicleNumber: ambulance.vehicleNumber || 'Unknown',
           });
         }
-
         await booking.save();
-        console.log('[Driver Reject] Reassignment completed');
-
-        // Populate booking data
-        await booking.populate([
-          { path: 'user', select: 'name phone email' },
-          { path: 'ambulance' },
-        ]);
-
-        // Notify user about final rejection via socket
+        // Notify user of final rejection
         const io = getIO();
         const userId = booking.user._id || booking.user;
         io.to(`user_${userId}`).emit('booking_status_update', {
@@ -234,7 +328,6 @@ exports.updateBookingStatus = async (req, res, next) => {
           booking,
         });
         io.to(`booking_${booking._id}`).emit('booking_status_update', { status: 'rejected', booking });
-
         return res.json({
           success: true,
           message: 'Booking rejected. No other ambulances available.',
@@ -242,9 +335,8 @@ exports.updateBookingStatus = async (req, res, next) => {
         });
       }
     }
-
     booking.status = status;
-    if (status === 'rejected')    booking.rejectionReason = rejectionReason || 'No reason provided';
+    if (status === 'rejected') booking.rejectionReason = rejectionReason || 'No reason provided';
     if (status === 'confirmed') {
       booking.confirmedAt = new Date();
       await Ambulance.findByIdAndUpdate(booking.ambulance._id, { isAvailable: false });
@@ -281,10 +373,10 @@ exports.updateBookingStatus = async (req, res, next) => {
     // When driver starts the trip, simulate ambulance moving toward pickup
     if (status === 'in_progress') {
       const bookingIdStr = booking._id.toString();
-      const userId       = booking.user.toString();
-      const ambulanceId  = booking.ambulance._id.toString();
+      const userId = booking.user.toString();
+      const ambulanceId = booking.ambulance._id.toString();
       const pickupCoords = booking.pickupLocation?.coordinates; // [lng, lat]
-      const amb          = await Ambulance.findById(ambulanceId);
+      const amb = await Ambulance.findById(ambulanceId);
 
       if (amb?.currentLocation?.coordinates && pickupCoords) {
         const [startLng, startLat] = amb.currentLocation.coordinates;
@@ -295,20 +387,20 @@ exports.updateBookingStatus = async (req, res, next) => {
           const frac = i / STEPS;
           const stepLat = startLat + (pickupLat - startLat) * frac;
           const stepLng = startLng + (pickupLng - startLng) * frac;
-          const etaMin  = Math.round((STEPS - i) * 0.4);
+          const etaMin = Math.round((STEPS - i) * 0.4);
 
           setTimeout(() => {
             io.to(`booking_${bookingIdStr}`).emit('ambulance_location', {
               ambulanceId,
-              latitude:  stepLat,
+              latitude: stepLat,
               longitude: stepLng,
-              eta:       etaMin,
+              eta: etaMin,
             });
             io.to(`user_${userId}`).emit('ambulance_location', {
               ambulanceId,
-              latitude:  stepLat,
+              latitude: stepLat,
               longitude: stepLng,
-              eta:       etaMin,
+              eta: etaMin,
             });
           }, i * 3000);
         }
@@ -322,12 +414,13 @@ exports.updateBookingStatus = async (req, res, next) => {
 // PUT /api/bookings/:id/cancel  (user)
 exports.cancelBooking = async (req, res, next) => {
   try {
-    const booking = await Booking.findById(req.params.id);
+    const booking = await Booking.findOne({
+      _id: req.params.id,
+      user: req.user.id,
+      ...getOrganizationFilter(req),
+    });
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found.' });
-    }
-    if (booking.user.toString() !== req.user.id) {
-      return res.status(403).json({ success: false, message: 'Not authorized.' });
     }
     if (!['pending', 'confirmed'].includes(booking.status)) {
       return res.status(400).json({ success: false, message: 'This booking cannot be cancelled.' });
@@ -359,9 +452,12 @@ exports.rateBooking = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5.' });
     }
 
-    const booking = await Booking.findById(req.params.id);
+    const booking = await Booking.findOne({
+      _id: req.params.id,
+      user: req.user.id,
+      ...getOrganizationFilter(req),
+    });
     if (!booking) return res.status(404).json({ success: false, message: 'Booking not found.' });
-    if (booking.user.toString() !== req.user.id) return res.status(403).json({ success: false, message: 'Not authorized.' });
     if (booking.status !== 'completed') return res.status(400).json({ success: false, message: 'Only completed bookings can be rated.' });
     if (booking.rating?.stars) return res.status(400).json({ success: false, message: 'Booking already rated.' });
 
@@ -371,6 +467,7 @@ exports.rateBooking = async (req, res, next) => {
     // Recalculate ambulance average rating
     const rated = await Booking.find({
       ambulance: booking.ambulance,
+      organizationId: booking.organizationId,
       'rating.stars': { $exists: true, $ne: null },
     });
     const avg = rated.reduce((s, b) => s + b.rating.stars, 0) / rated.length;
@@ -389,7 +486,14 @@ exports.rateBooking = async (req, res, next) => {
 exports.getAmbulanceBookings = async (req, res, next) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
-    const query = { ambulance: req.params.ambulanceId };
+    const ambulanceFilter = { _id: req.params.ambulanceId, ...getOrganizationFilter(req) };
+    if (req.user.role === 'driver') ambulanceFilter.owner = req.user.id;
+    const ambulance = await Ambulance.findOne(ambulanceFilter);
+    if (!ambulance) {
+      return res.status(404).json({ success: false, message: 'Ambulance not found.' });
+    }
+
+    const query = { ambulance: ambulance._id, ...getOrganizationFilter(req) };
 
     if (status) {
       // Support comma-separated statuses e.g. "confirmed,in_progress"
@@ -413,7 +517,7 @@ exports.getAmbulanceBookings = async (req, res, next) => {
 // GET /api/bookings/:id/reassignment-history  (admin)
 exports.getReassignmentHistory = async (req, res, next) => {
   try {
-    const booking = await Booking.findById(req.params.id)
+    const booking = await Booking.findOne({ _id: req.params.id, ...getOrganizationFilter(req) })
       .populate('ambulance', 'vehicleNumber driverName')
       .populate('previousAssignments.ambulanceId', 'vehicleNumber')
       .populate('previousAssignments.driverId', 'name phone');
@@ -440,8 +544,7 @@ exports.getReassignmentHistory = async (req, res, next) => {
 // POST /api/bookings/:id/manual-reassign  (admin - for testing/manual override)
 exports.manualReassign = async (req, res, next) => {
   try {
-    const { bookingTimeoutService } = require('../services/bookingTimeoutService');
-    const booking = await Booking.findById(req.params.id).populate('ambulance');
+    const booking = await Booking.findOne({ _id: req.params.id, ...getOrganizationFilter(req) }).populate('ambulance');
 
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found.' });
@@ -487,15 +590,14 @@ exports.getTimeoutDebugStatus = async (req, res, next) => {
     const pendingBookings = await Booking.find({
       status: 'pending',
       assignedAt: { $exists: true, $ne: null },
+      ...getOrganizationFilter(req),
     }).populate('ambulance', 'vehicleNumber driverName').select('_id status emergencyType assignedAt reassignedAt reassignmentCount ambulance createdAt');
 
     const now = Date.now();
     const bookingStatus = pendingBookings.map((booking) => {
       const referenceTime = booking.reassignedAt || booking.assignedAt;
       const elapsedSec = (now - referenceTime.getTime()) / 1000;
-      const timeout = (booking.emergencyType === 'accident' || booking.emergencyType === 'cardiac' || booking.emergencyType === 'trauma')
-        ? 60 : 120;
-      
+      const timeout = 300;
       return {
         bookingId: booking._id,
         status: booking.status,

@@ -36,6 +36,12 @@ const billSchema = new mongoose.Schema(
       ref: 'Ambulance',
       required: true,
     },
+    // Denormalized snapshot of the booking/ambulance's organization; not yet populated at generation.
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+      index: true,
+    },
 
     // Patient Details (snapshot at time of billing)
     patientName: {

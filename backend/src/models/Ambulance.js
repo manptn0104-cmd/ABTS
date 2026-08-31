@@ -86,6 +86,12 @@ const ambulanceSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    // Tenant boundary; optional for now — existing ambulances predate organizations.
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+      index: true,
+    },
   },
   { timestamps: true }
 );

@@ -2,33 +2,38 @@ const User      = require('../models/User');
 const Ambulance = require('../models/Ambulance');
 const Booking   = require('../models/Booking');
 
+const getOrganizationFilter = (req) => (
+  req.user.role === 'superadmin' ? {} : { organizationId: req.user.organizationId }
+);
+
 // GET /api/admin/stats
 exports.getStats = async (req, res, next) => {
   try {
+    const organizationFilter = getOrganizationFilter(req);
     const [
       totalUsers, totalDrivers, totalAmbulances, totalBookings,
       pendingBookings, completedBookings, cancelledBookings,
       availableAmbulances,
     ] = await Promise.all([
-      User.countDocuments({ role: 'user' }),
-      User.countDocuments({ role: 'driver' }),
-      Ambulance.countDocuments(),
-      Booking.countDocuments(),
-      Booking.countDocuments({ status: 'pending' }),
-      Booking.countDocuments({ status: 'completed' }),
-      Booking.countDocuments({ status: { $in: ['cancelled', 'rejected'] } }),
-      Ambulance.countDocuments({ isAvailable: true }),
+      User.countDocuments({ role: 'user', ...organizationFilter }),
+      User.countDocuments({ role: 'driver', ...organizationFilter }),
+      Ambulance.countDocuments(organizationFilter),
+      Booking.countDocuments(organizationFilter),
+      Booking.countDocuments({ status: 'pending', ...organizationFilter }),
+      Booking.countDocuments({ status: 'completed', ...organizationFilter }),
+      Booking.countDocuments({ status: { $in: ['cancelled', 'rejected'] }, ...organizationFilter }),
+      Ambulance.countDocuments({ isAvailable: true, ...organizationFilter }),
     ]);
 
     // Total revenue from completed bookings
     const revenueAgg = await Booking.aggregate([
-      { $match: { status: 'completed' } },
+      { $match: { status: 'completed', ...organizationFilter } },
       { $group: { _id: null, total: { $sum: '$estimatedFare' } } },
     ]);
     const totalRevenue = revenueAgg[0]?.total || 0;
 
     // Recent 5 bookings
-    const recentBookings = await Booking.find()
+    const recentBookings = await Booking.find(organizationFilter)
       .sort({ createdAt: -1 })
       .limit(5)
       .populate('user', 'name phone')
@@ -55,6 +60,7 @@ exports.getAllBookings = async (req, res, next) => {
     const limit  = Math.min(50, parseInt(req.query.limit) || 20);
     const skip   = (page - 1) * limit;
     const filter = req.query.status ? { status: req.query.status } : {};
+    Object.assign(filter, getOrganizationFilter(req));
 
     const [bookings, total] = await Promise.all([
       Booking.find(filter)
@@ -76,6 +82,7 @@ exports.getAllUsers = async (req, res, next) => {
   try {
     const role  = req.query.role;
     const filter = role ? { role } : { role: { $in: ['user', 'driver'] } };
+    Object.assign(filter, getOrganizationFilter(req));
     const users = await User.find(filter).sort({ createdAt: -1 });
     res.json({ success: true, users });
   } catch (error) {
@@ -86,7 +93,7 @@ exports.getAllUsers = async (req, res, next) => {
 // GET /api/admin/ambulances
 exports.getAllAmbulances = async (req, res, next) => {
   try {
-    const ambulances = await Ambulance.find()
+    const ambulances = await Ambulance.find(getOrganizationFilter(req))
       .sort({ createdAt: -1 })
       .populate('owner', 'name email');
     res.json({ success: true, ambulances });
@@ -103,12 +110,12 @@ exports.updateBookingStatus = async (req, res, next) => {
     if (!allowed.includes(status)) {
       return res.status(400).json({ success: false, message: 'Invalid status.' });
     }
-    const booking = await Booking.findByIdAndUpdate(
-      req.params.id,
-      { status },
-      { new: true }
-    ).populate('user', 'name phone').populate('ambulance', 'vehicleNumber driverName');
+    const booking = await Booking.findOne({ _id: req.params.id, ...getOrganizationFilter(req) });
     if (!booking) return res.status(404).json({ success: false, message: 'Booking not found.' });
+    booking.status = status;
+    await booking.save();
+    await booking.populate('user', 'name phone');
+    await booking.populate('ambulance', 'vehicleNumber driverName');
     res.json({ success: true, booking });
   } catch (error) {
     next(error);
@@ -128,7 +135,7 @@ exports.registerAmbulance = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'vehicleNumber, driverName, driverPhone, driverLicense and ownerId are required.' });
     }
 
-    const owner = await User.findById(ownerId);
+    const owner = await User.findOne({ _id: ownerId, role: 'driver', ...getOrganizationFilter(req) });
     if (!owner || owner.role !== 'driver') {
       return res.status(400).json({ success: false, message: 'ownerId must reference an existing driver account.' });
     }
@@ -150,6 +157,7 @@ exports.registerAmbulance = async (req, res, next) => {
       facilities:      facilities      || {},
       owner:           ownerId,
       currentLocation: { type: 'Point', coordinates: [77.5946, 12.9716], address: 'Bangalore' },
+      ...(req.user.role !== 'superadmin' ? { organizationId: req.user.organizationId } : {}),
     });
 
     res.status(201).json({ success: true, message: 'Ambulance registered successfully.', ambulance });
@@ -161,10 +169,11 @@ exports.registerAmbulance = async (req, res, next) => {
 // DELETE /api/admin/ambulances/:id  — deregister (permanently remove) an ambulance
 exports.deregisterAmbulance = async (req, res, next) => {
   try {
-    const ambulance = await Ambulance.findByIdAndDelete(req.params.id);
+    const ambulance = await Ambulance.findOne({ _id: req.params.id, ...getOrganizationFilter(req) });
     if (!ambulance) {
       return res.status(404).json({ success: false, message: 'Ambulance not found.' });
     }
+    await Ambulance.findByIdAndDelete(ambulance._id);
     res.json({ success: true, message: `Ambulance ${ambulance.vehicleNumber} deregistered successfully.` });
   } catch (error) {
     next(error);
@@ -179,17 +188,26 @@ exports.reassignBooking = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'ambulanceId is required.' });
     }
 
-    const booking = await Booking.findById(req.params.id);
+    const booking = await Booking.findOne({ _id: req.params.id, ...getOrganizationFilter(req) });
     if (!booking) return res.status(404).json({ success: false, message: 'Booking not found.' });
 
     if (booking.status !== 'rejected') {
       return res.status(400).json({ success: false, message: 'Only rejected bookings can be reassigned.' });
     }
 
-    const ambulance = await Ambulance.findById(ambulanceId);
+    const ambulance = await Ambulance.findOne({ _id: ambulanceId, ...getOrganizationFilter(req) });
     if (!ambulance) return res.status(404).json({ success: false, message: 'Ambulance not found.' });
     if (!ambulance.isAvailable) {
       return res.status(409).json({ success: false, message: 'Selected ambulance is currently unavailable.' });
+    }
+
+    const driverUser = await User.findOne({
+      _id: ambulance.owner,
+      role: 'driver',
+      ...getOrganizationFilter(req),
+    });
+    if (!driverUser) {
+      return res.status(400).json({ success: false, message: 'Selected ambulance owner must be an existing driver account.' });
     }
 
     booking.ambulance       = ambulanceId;
@@ -205,13 +223,10 @@ exports.reassignBooking = async (req, res, next) => {
     // Notify the new driver via socket
     const { getIO } = require('../services/socketService');
     const io = getIO();
-    const driverUser = await User.findById(ambulance.owner);
-    if (driverUser) {
-      io.to(`user_${driverUser._id}`).emit('new_booking_request', {
-        booking,
-        message: 'New booking request assigned by admin',
-      });
-    }
+    io.to(`user_${driverUser._id}`).emit('new_booking_request', {
+      booking,
+      message: 'New booking request assigned by admin',
+    });
     io.to(`ambulance_${ambulanceId}`).emit('new_booking_request', {
       booking,
       message: 'New booking request received',
@@ -234,7 +249,7 @@ exports.reassignBooking = async (req, res, next) => {
 // PATCH /api/admin/ambulances/:id/availability  — toggle isAvailable
 exports.toggleAmbulanceAvailability = async (req, res, next) => {
   try {
-    const ambulance = await Ambulance.findById(req.params.id);
+    const ambulance = await Ambulance.findOne({ _id: req.params.id, ...getOrganizationFilter(req) });
     if (!ambulance) return res.status(404).json({ success: false, message: 'Ambulance not found.' });
     ambulance.isAvailable = !ambulance.isAvailable;
     await ambulance.save();

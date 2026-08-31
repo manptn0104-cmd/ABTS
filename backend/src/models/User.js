@@ -30,8 +30,14 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['user', 'driver', 'admin'],
+      enum: ['user', 'driver', 'admin', 'superadmin'],
       default: 'user',
+    },
+    // Org membership: required conceptually for admin/driver, absent for user/superadmin. Enforced in a later step.
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
+      index: true,
     },
     isVerified: {
       type: Boolean,

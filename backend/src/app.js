@@ -12,6 +12,8 @@ const trackingRoutes  = require('./routes/tracking');
 const adminRoutes     = require('./routes/admin');
 const supportRoutes   = require('./routes/support');
 const reviewRoutes    = require('./routes/reviewRoutes');
+const organizationRoutes = require('./routes/organizations');
+const superAdminRoutes = require('./routes/superAdmin');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -64,6 +66,8 @@ app.use('/api/tracking',   trackingRoutes);
 app.use('/api/admin',      adminRoutes);
 app.use('/api/support',    supportRoutes);
 app.use('/api/reviews',    reviewRoutes);
+app.use('/api/organizations', organizationRoutes);
+app.use('/api/super-admin', superAdminRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

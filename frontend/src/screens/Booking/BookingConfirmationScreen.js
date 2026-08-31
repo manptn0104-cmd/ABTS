@@ -17,7 +17,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   // Defensive route.params extraction with fallbacks
   const {
     ambulance,
-    location,
+    selectedPickup,
     selectedFacilities: passedFacilities = [],
     searchText = 'Current Location',
   } = route.params || {};
@@ -28,10 +28,16 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   // Log received parameters for debugging
   console.log('[BookingConfirmationScreen] Route params:', {
     ambulanceId: ambulance?._id,
-    location: { lat: location?.latitude, lng: location?.longitude },
+    selectedPickup,
     selectedFacilitiesReceived: passedFacilities,
     selectedFacilitiesProcessed: selectedFacilities,
     searchText,
+  });
+  console.log('[Pickup DEBUG - FINAL BOOKING]', {
+    source: 'selectedPickup',
+    address: selectedPickup?.address,
+    latitude: selectedPickup?.latitude,
+    longitude: selectedPickup?.longitude,
   });
   
   const dispatch = useDispatch();
@@ -58,7 +64,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
 
   // Pickup location (readonly, pre-filled from home screen via navigation params)
   const pickupAddress = searchText || 'Current Location';
-  const pickupCoords = location || null;
+  const pickupCoords = selectedPickup || null;
 
   // Drop location (editable)
   const [dropAddress,    setDropAddress]    = useState('');
@@ -70,8 +76,8 @@ export default function BookingConfirmationScreen({ route, navigation }) {
 
   const nominatimSearch = useCallback(async (query) => {
     // Bias results near pickup location for better local search
-    const biasLat = pickupCoords?.latitude  ?? 12.9716;
-    const biasLng = pickupCoords?.longitude ?? 77.5946;
+    const biasLat = selectedPickup?.latitude  ?? 12.9716;
+    const biasLng = selectedPickup?.longitude ?? 77.5946;
     const viewbox = `${biasLng - 0.5},${biasLat + 0.5},${biasLng + 0.5},${biasLat - 0.5}`;
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=6&countrycodes=in&viewbox=${viewbox}&bounded=0`;
     const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
@@ -83,7 +89,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
       lat: parseFloat(r.lat),
       lng: parseFloat(r.lon),
     }));
-  }, [pickupCoords]);
+  }, [selectedPickup]);
 
   const nominatimReverse = useCallback(async (lat, lng) => {
     try {
@@ -126,11 +132,11 @@ export default function BookingConfirmationScreen({ route, navigation }) {
 
   // Reverse geocode pickup coordinates on mount or when coordinates change
   useEffect(() => {
-    if (pickupCoords?.latitude && pickupCoords?.longitude) {
-      const currentCoords = `${pickupCoords.latitude},${pickupCoords.longitude}`;
+    if (selectedPickup?.latitude && selectedPickup?.longitude) {
+      const currentCoords = `${selectedPickup.latitude},${selectedPickup.longitude}`;
       reverseGeocodeRef.current = currentCoords;
 
-      nominatimReverse(pickupCoords.latitude, pickupCoords.longitude)
+      nominatimReverse(selectedPickup.latitude, selectedPickup.longitude)
         .then((address) => {
           // Only update if this is still the current request
           if (reverseGeocodeRef.current === currentCoords) {
@@ -143,7 +149,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
           }
         });
     }
-  }, [pickupCoords, nominatimReverse]);
+  }, [selectedPickup, nominatimReverse]);
 
   // Debug: Log blood group changes
   useEffect(() => {
@@ -269,7 +275,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
       return;
     }
 
-    const resolvedPickup = pickupCoords || location;
+    const resolvedPickup = selectedPickup;
 
     // Validate pickup location
     if (!resolvedPickup) {
@@ -392,7 +398,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
     }
 
     // Validate location
-    if (!location && !pickupCoords) {
+    if (!selectedPickup) {
       showAlert('Error', 'Pickup location is required.');
       return;
     }

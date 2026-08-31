@@ -11,8 +11,8 @@ const { calculateSmartETA, calculateRankScore } = require('../utils/etaPredictor
 
 // Configuration
 const CONFIG = {
-  EMERGENCY_TIMEOUT_SEC: 60,      // 60 seconds for emergency
-  GENERAL_TIMEOUT_SEC: 120,       // 2 minutes for general
+  EMERGENCY_TIMEOUT_SEC: 300,      // 300 seconds for emergency
+  GENERAL_TIMEOUT_SEC: 300,       // 2 minutes for general
   CHECK_INTERVAL_SEC: 30,         // Run every 30 seconds
   MAX_REASSIGNMENTS: 5,           // Maximum reassignment attempts
   MAX_AMBULANCES_TO_SEARCH: 50,   // Search top 50 ambulances
@@ -231,7 +231,7 @@ async function reassignBooking(booking, newAmbulance, oldAmbulanceId = null, rea
     // Notify user of reassignment
     const userRoom = `user_${booking.user}`;
     const bookingRoom = `booking_${booking._id}`;
-    
+
     console.log(
       `[BookingTimeout] 📡 SOCKET EMIT | ` +
       `Room: ${userRoom} | ` +
@@ -323,14 +323,14 @@ async function checkAndReassignBooking(booking) {
   try {
     const timeoutSec = getTimeoutDuration(booking.emergencyType);
     const now = Date.now();
-    
+
     // Use reassignedAt as reference if available, otherwise use assignedAt
     const referenceTime = booking.reassignedAt || booking.assignedAt;
     if (!referenceTime) {
       console.log(`[BookingTimeout] Booking ${booking._id} has no assignedAt/reassignedAt timestamp, skipping`);
       return null;
     }
-    
+
     const referenceTimeMs = referenceTime.getTime();
     const elapsedSec = (now - referenceTimeMs) / 1000;
 
@@ -349,8 +349,7 @@ async function checkAndReassignBooking(booking) {
     }
 
     console.log(
-      `[BookingTimeout] ⏱ TIMEOUT TRIGGERED for booking ${booking._id} (${elapsedSec.toFixed(0)}s > ${timeoutSec}s). Attempting reassignment #${
-        booking.reassignmentCount + 1
+      `[BookingTimeout] ⏱ TIMEOUT TRIGGERED for booking ${booking._id} (${elapsedSec.toFixed(0)}s > ${timeoutSec}s). Attempting reassignment #${booking.reassignmentCount + 1
       }`
     );
 
@@ -394,7 +393,7 @@ async function checkAndReassignBooking(booking) {
 async function runTimeoutCheck() {
   const cycleStart = Date.now();
   console.log(`[BookingTimeout] ⏰⏰⏰ SCHEDULER CYCLE STARTING...`);
-  
+
   try {
     // Find all pending bookings with assignedAt timestamp
     console.log('[BookingTimeout] 🔍 Querying database for pending bookings...');

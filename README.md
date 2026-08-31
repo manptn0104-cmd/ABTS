@@ -223,7 +223,7 @@ MONGODB_URI=mongodb://localhost:27017/abts
 JWT_SECRET=your_super_secret_key
 JWT_EXPIRES_IN=7d
 FRONTEND_URL=http://localhost:8081
-GOOGLE_MAPS_API_KEY=your_key
+GOOGLE_MAPS_API_KEY=AIzaSyCxFnORXAt8e20GKVDMQHEW2hsOlNITK0k
 NODE_ENV=development
 ```
 

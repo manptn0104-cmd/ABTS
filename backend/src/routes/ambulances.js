@@ -10,16 +10,17 @@ const {
   updateLocation,
   toggleAvailability,
 } = require('../controllers/ambulanceController');
-const { protect, authorize } = require('../middleware/auth');
+const { protect, authorize, requireActiveOrganization } = require('../middleware/auth');
 
-router.get('/mine', protect, authorize('driver', 'admin'), getMyAmbulance);
+router.get('/mine', protect, authorize('driver', 'admin', 'superadmin'), requireActiveOrganization, getMyAmbulance);
 router.get('/', getAmbulances);
 router.get('/:id', getAmbulance);
 
 router.post(
   '/',
   protect,
-  authorize('driver', 'admin'),
+  authorize('driver', 'admin', 'superadmin'),
+  requireActiveOrganization,
   [
     body('vehicleNumber').notEmpty().withMessage('Vehicle number is required'),
     body('driverName').notEmpty().withMessage('Driver name is required'),
@@ -31,8 +32,8 @@ router.post(
   createAmbulance
 );
 
-router.put('/:id', protect, authorize('driver', 'admin'), updateAmbulance);
+router.put('/:id', protect, authorize('driver', 'admin', 'superadmin'), requireActiveOrganization, updateAmbulance);
 router.put('/:id/location', protect, updateLocation);
-router.put('/:id/availability', protect, authorize('driver', 'admin'), toggleAvailability);
+router.put('/:id/availability', protect, authorize('driver', 'admin', 'superadmin'), requireActiveOrganization, toggleAvailability);
 
 module.exports = router;

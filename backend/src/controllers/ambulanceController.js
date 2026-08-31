@@ -1,5 +1,35 @@
 const Ambulance = require('../models/Ambulance');
+const User = require('../models/User');
 const { validationResult } = require('express-validator');
+
+const getManagementFilter = (req) => {
+  if (req.user.role === 'superadmin') return {};
+
+  const filter = { organizationId: req.user.organizationId };
+  if (req.user.role === 'driver') filter.owner = req.user.id;
+  return filter;
+};
+
+const getAmbulanceUpdates = (body) => {
+  const allowedFields = [
+    'vehicleNumber',
+    'driverName',
+    'driverPhone',
+    'driverLicense',
+    'driverImage',
+    'vehicleImage',
+    'type',
+    'facilities',
+    'pricePerKm',
+    'basePrice',
+    'specializations',
+  ];
+  const updates = {};
+  allowedFields.forEach((field) => {
+    if (body[field] !== undefined) updates[field] = body[field];
+  });
+  return updates;
+};
 
 // GET /api/ambulances
 exports.getAmbulances = async (req, res, next) => {
@@ -103,7 +133,36 @@ exports.createAmbulance = async (req, res, next) => {
     if (!errors.isEmpty()) {
       return res.status(400).json({ success: false, errors: errors.array() });
     }
-    const ambulance = await Ambulance.create({ ...req.body, owner: req.user.id });
+
+    if (req.user.role === 'superadmin') {
+      return res.status(400).json({
+        success: false,
+        message: 'SuperAdmin ambulance registration requires an organization-specific workflow.',
+      });
+    }
+
+    let ownerId = req.user.id;
+    if (req.user.role === 'admin') {
+      if (!req.body.ownerId) {
+        return res.status(400).json({ success: false, message: 'ownerId is required for admin ambulance registration.' });
+      }
+
+      const owner = await User.findOne({
+        _id: req.body.ownerId,
+        role: 'driver',
+        organizationId: req.user.organizationId,
+      });
+      if (!owner) {
+        return res.status(400).json({ success: false, message: 'ownerId must reference a driver in your organization.' });
+      }
+      ownerId = owner._id;
+    }
+
+    const ambulance = await Ambulance.create({
+      ...getAmbulanceUpdates(req.body),
+      owner: ownerId,
+      organizationId: req.user.organizationId,
+    });
     res.status(201).json({ success: true, message: 'Ambulance registered.', ambulance });
   } catch (error) {
     next(error);
@@ -113,22 +172,15 @@ exports.createAmbulance = async (req, res, next) => {
 // PUT /api/ambulances/:id
 exports.updateAmbulance = async (req, res, next) => {
   try {
-    const ambulance = await Ambulance.findById(req.params.id);
+    const ambulance = await Ambulance.findOne({ _id: req.params.id, ...getManagementFilter(req) });
     if (!ambulance) {
       return res.status(404).json({ success: false, message: 'Ambulance not found.' });
     }
 
-    const isOwner = ambulance.owner.toString() === req.user.id;
-    if (!isOwner && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Not authorized.' });
-    }
+    Object.assign(ambulance, getAmbulanceUpdates(req.body));
+    await ambulance.save();
 
-    const updated = await Ambulance.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    });
-
-    res.json({ success: true, message: 'Ambulance updated.', ambulance: updated });
+    res.json({ success: true, message: 'Ambulance updated.', ambulance });
   } catch (error) {
     next(error);
   }
@@ -167,7 +219,9 @@ exports.updateLocation = async (req, res, next) => {
 // GET /api/ambulances/mine  (driver's own ambulance)
 exports.getMyAmbulance = async (req, res, next) => {
   try {
-    const ambulance = await Ambulance.findOne({ owner: req.user.id });
+    const filter = { owner: req.user.id };
+    if (req.user.role !== 'superadmin') filter.organizationId = req.user.organizationId;
+    const ambulance = await Ambulance.findOne(filter);
     if (!ambulance) {
       return res.status(404).json({ success: false, message: 'No ambulance assigned to this driver.' });
     }
@@ -180,14 +234,9 @@ exports.getMyAmbulance = async (req, res, next) => {
 // PUT /api/ambulances/:id/availability
 exports.toggleAvailability = async (req, res, next) => {
   try {
-    const ambulance = await Ambulance.findById(req.params.id);
+    const ambulance = await Ambulance.findOne({ _id: req.params.id, ...getManagementFilter(req) });
     if (!ambulance) {
       return res.status(404).json({ success: false, message: 'Ambulance not found.' });
-    }
-
-    const isOwner = ambulance.owner.toString() === req.user.id;
-    if (!isOwner && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Not authorized.' });
     }
 
     ambulance.isAvailable = !ambulance.isAvailable;

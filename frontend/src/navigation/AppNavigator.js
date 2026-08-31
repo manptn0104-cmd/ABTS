@@ -24,6 +24,12 @@ import ReviewsScreen            from '../screens/Driver/ReviewsScreen';
 import AdminDashboardScreen     from '../screens/Admin/AdminDashboardScreen';
 import HelpSupportScreen        from '../screens/Help/HelpSupportScreen';
 import FeedbackScreen          from '../screens/Feedback/FeedbackScreen';
+import SuperAdminDashboardScreen from '../screens/SuperAdmin/SuperAdminDashboardScreen';
+import OrganizationListScreen   from '../screens/SuperAdmin/OrganizationListScreen';
+import AdminManagementScreen    from '../screens/SuperAdmin/AdminManagementScreen';
+import CreateOrganizationScreen from '../screens/SuperAdmin/CreateOrganizationScreen';
+import OrganizationDetailsScreen from '../screens/SuperAdmin/OrganizationDetailsScreen';
+import EditOrganizationScreen   from '../screens/SuperAdmin/EditOrganizationScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab   = createBottomTabNavigator();
@@ -32,6 +38,9 @@ const TAB_ICON = {
   Home:       'home',
   Bookings:   'clipboard-list',
   Profile:    'account-circle',
+  Dashboard:  'view-dashboard',
+  Orgs:       'office-building',
+  Admins:     'shield-account',
 };
 
 function MainTabs() {
@@ -203,6 +212,90 @@ function AdminStack() {
   );
 }
 
+// ── SuperAdmin Tab Navigator ──────────────────────────────────────────────────────
+function SuperAdminTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor:   '#9C27B0',
+        tabBarInactiveTintColor: Colors.textMuted,
+        tabBarStyle: {
+          backgroundColor: Colors.surface,
+          borderTopColor:  Colors.border,
+          paddingBottom:   4,
+          height:          60,
+        },
+        tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
+      }}
+    >
+      <Tab.Screen
+        name="SuperAdminDashboard"
+        component={SuperAdminDashboardScreen}
+        options={{
+          title: 'Dashboard',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name={TAB_ICON.Dashboard} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Organizations"
+        component={OrganizationListScreen}
+        options={{
+          title: 'Organizations',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name={TAB_ICON.Orgs} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="AdminManagement"
+        component={AdminManagementScreen}
+        options={{
+          title: 'Admins',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name={TAB_ICON.Admins} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="SuperAdminProfile"
+        component={ProfileScreen}
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialCommunityIcons name="account-circle" size={size} color={color} />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+}
+
+function SuperAdminStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="SuperAdminTabs" component={SuperAdminTabs} />
+      <Stack.Screen 
+        name="CreateOrganization" 
+        component={CreateOrganizationScreen}
+        options={{ presentation: 'card' }}
+      />
+      <Stack.Screen 
+        name="OrganizationDetails" 
+        component={OrganizationDetailsScreen}
+        options={{ presentation: 'card' }}
+      />
+      <Stack.Screen 
+        name="EditOrganization" 
+        component={EditOrganizationScreen}
+        options={{ presentation: 'card' }}
+      />
+    </Stack.Navigator>
+  );
+}
+
 export default function AppNavigator() {
   const dispatch      = useDispatch();
   const { user, isInitialised } = useSelector((s) => s.auth);
@@ -220,6 +313,7 @@ export default function AppNavigator() {
   }
 
   if (!user) return <AuthStack />;
+  if (user.role === 'superadmin') return <SuperAdminStack />;
   if (user.role === 'admin')  return <AdminStack />;
   if (user.role === 'driver') return <DriverStack />;
   return <AppStack />;

@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { protect, authorize } = require('../middleware/auth');
+const { protect, authorize, requireActiveOrganization } = require('../middleware/auth');
 const {
   getStats,
   getAllBookings,
@@ -15,7 +15,8 @@ const {
 
 // All admin routes require authentication + admin role
 router.use(protect);
-router.use(authorize('admin'));
+router.use(authorize('admin', 'superadmin'));
+router.use(requireActiveOrganization);
 
 router.get('/stats',                          getStats);
 router.get('/bookings',                       getAllBookings);

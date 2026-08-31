@@ -13,7 +13,7 @@ import { Colors, Spacing, BorderRadius, Shadow, Typography } from '../../theme';
 import { getAmbulanceType, formatDistance, formatETA, formatCurrency } from '../../utils/helpers';
 
 export default function AmbulanceDetailsScreen({ route, navigation }) {
-  const { ambulanceId, location, searchText, selectedFacilities = [] } = route.params || {};
+  const { ambulanceId, selectedPickup, searchText, selectedFacilities = [] } = route.params || {};
   const dispatch = useDispatch();
   const { selected: ambulance, isLoadingDetails } = useSelector((s) => s.ambulance);
 
@@ -32,12 +32,12 @@ export default function AmbulanceDetailsScreen({ route, navigation }) {
   const typeConfig = getAmbulanceType(ambulance.type);
 
   const handleBook = () => {
-    if (!location) {
+    if (!selectedPickup) {
       Alert.alert('Location Required', 'We need your pickup location to proceed.');
       return;
     }
     console.log('[AmbulanceDetailsScreen] Navigating to BookingConfirmation with selectedFacilities:', selectedFacilities);
-    navigation.navigate('BookingConfirmation', { ambulance, location, selectedFacilities, searchText });
+    navigation.navigate('BookingConfirmation', { ambulance, selectedPickup, selectedFacilities, searchText });
   };
 
   return (
@@ -59,7 +59,7 @@ export default function AmbulanceDetailsScreen({ route, navigation }) {
           <Text style={styles.vehicleNum}>{ambulance.vehicleNumber}</Text>
 
           <View style={styles.statsRow}>
-            {location && (
+            {selectedPickup && (
               <>
                 <View style={styles.stat}>
                   <MaterialCommunityIcons name="map-marker-distance" size={18} color={Colors.primary} />

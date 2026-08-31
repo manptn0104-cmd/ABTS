@@ -23,6 +23,14 @@ exports.generateBill = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Booking not found.' });
     }
 
+    // Tenant boundary is derived from the booking, never from client input.
+    if (!booking.organizationId) {
+      return res.status(409).json({
+        success: false,
+        message: 'This booking is not yet associated with an organization. A bill cannot be generated for it.',
+      });
+    }
+
     // Check if booking is completed
     if (booking.status !== 'completed') {
       return res.status(400).json({ 
@@ -55,6 +63,7 @@ exports.generateBill = async (req, res, next) => {
       patientId: booking.user._id,
       driverId: driver._id,
       ambulanceId: ambulance._id,
+      organizationId: booking.organizationId,
       
       // Patient details
       patientName: booking.patientDetails?.name || booking.user.name,

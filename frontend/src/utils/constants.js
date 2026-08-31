@@ -1,7 +1,7 @@
 export const API_BASE_URL = 'http://localhost:5001/api';
 export const SOCKET_URL = 'http://localhost:5001';
 
-export const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
+export const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 export const EMERGENCY_TYPES = [
   { label: 'Accident', value: 'accident', icon: 'car-brake-alert' },

@@ -152,13 +152,15 @@ export default function HomeScreen({ navigation }) {
   };
 
   const handleSelectSuggestion = (s) => {
+    console.log('[PICKUP DEBUG] SUGGESTION SELECTED:', s);
+    console.log('[PICKUP DEBUG] address:', s.shortLabel, 'lat:', s.lat, 'lng:', s.lng);
     const newLoc = { latitude: s.lat, longitude: s.lng };
     setManualLocation(newLoc); // Lock in the user's choice (GPS won't overwrite this)
     setSearchText(s.shortLabel);
     setSuggestions([]);
     setShowSuggestions(false);
     setIsFocused(false);
-    setLocation(newLoc);
+    // setLocation(newLoc); // disabled: manual location should not update global GPS state
     setAddress(s.shortLabel);
     setMapRegion({ latitude: s.lat, longitude: s.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 });
     // Fetch ambulances for the manually selected location
@@ -230,16 +232,16 @@ export default function HomeScreen({ navigation }) {
   }, [address, manualLocation]);
 
   const handleSearch = useCallback(() => {
-    navigation.navigate('AmbulanceList', { location: effectiveLocation, searchText, selectedFacilities });
+    navigation.navigate('AmbulanceList', { selectedPickup: effectiveLocation, searchText, selectedFacilities });
   }, [navigation, effectiveLocation, searchText, selectedFacilities]);
 
   const handleQuickBook = () => {
-    navigation.navigate('AmbulanceList', { location: effectiveLocation || { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude }, searchText, selectedFacilities });
+    navigation.navigate('AmbulanceList', { selectedPickup: effectiveLocation || { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude }, searchText, selectedFacilities });
   };
 
   const handleAmbulancePress = (amb) => {
     console.log('[HomeScreen] Navigating to AmbulanceDetails with selectedFacilities:', selectedFacilities);
-    navigation.navigate('AmbulanceDetails', { ambulanceId: amb._id, location: effectiveLocation, searchText, selectedFacilities });
+    navigation.navigate('AmbulanceDetails', { ambulanceId: amb._id, selectedPickup: effectiveLocation, searchText, selectedFacilities });
   };
 
   return (
@@ -291,6 +293,7 @@ export default function HomeScreen({ navigation }) {
                   key={idx}
                   style={[styles.suggestionItem, idx < suggestions.length - 1 && styles.suggestionBorder]}
                   onPress={() => handleSelectSuggestion(s)}
+                  onClick={() => handleSelectSuggestion(s)}
                   activeOpacity={0.7}
                 >
                   <MaterialCommunityIcons name="map-marker-outline" size={16} color={Colors.primary} style={styles.suggestionIcon} />
