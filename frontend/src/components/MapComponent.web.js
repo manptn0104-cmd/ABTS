@@ -32,6 +32,8 @@ export default function MapComponent({
     list: {}, // keyed by ambulance _id
   });
   const routeRef = useRef(null);
+  // Sequence counter ensuring only the newest OSRM route response is applied
+  const routeSeqRef = useRef(0);
   // Track whether initial viewport has been set and previous ambulance ID for reassignment detection
   const hasInitializedViewportRef = useRef(false);
   const prevAmbulanceIdRef = useRef(null);
@@ -120,7 +122,8 @@ export default function MapComponent({
     if (!markersRef.current.ambulance) {
       mapRef.current.setCenter(pos);
     }
-    updateRoute();
+    // Route recalculation is triggered solely by the ambulance-location effect,
+    // so a re-created userLocation object no longer fires a duplicate request.
   }, [userLocation]);
 
   // Update single ambulance location marker (used for the primary ambulance display)
@@ -151,7 +154,8 @@ export default function MapComponent({
         }
       }
     }
-    updateRoute();
+    // Recalculate the route from the SAME latest ambulance position used for the marker
+    updateRoute(pos);
   }, [ambulanceLocation]);
 
   // Update an array of additional ambulance markers
@@ -187,8 +191,8 @@ export default function MapComponent({
     });
   }, [ambulances]);
 
-  // Draw route using OSRM – unchanged logic, but now guaranteed that the Maps API is loaded
-  const updateRoute = () => {
+  // Draw route using OSRM – latest response wins; stale responses are discarded
+  const updateRoute = (ambPos = null) => {
     if (!mapRef.current) return;
     const userMarker = markersRef.current.user;
     const ambMarker = markersRef.current.ambulance;
@@ -199,12 +203,17 @@ export default function MapComponent({
       }
       return;
     }
-    const start = ambMarker.getPosition();
+    // Prefer the exact latest ambulance coordinates so the route starts where the marker is
+    const start = ambPos
+      ? { lat: () => ambPos.lat, lng: () => ambPos.lng }
+      : ambMarker.getPosition();
     const end = userMarker.getPosition();
     const url = `https://router.project-osrm.org/route/v1/driving/${start.lng()},${start.lat()};${end.lng()},${end.lat()}?overview=full&geometries=geojson`;
+    const seq = ++routeSeqRef.current;
     fetch(url)
       .then((res) => res.json())
       .then((data) => {
+        if (seq !== routeSeqRef.current) return; // a newer request superseded this one
         if (data.code === 'Ok' && data.routes && data.routes[0]) {
           const coords = data.routes[0].geometry.coordinates.map((c) => ({ lat: c[1], lng: c[0] }));
           if (!routeRef.current) {
@@ -222,7 +231,10 @@ export default function MapComponent({
           fallbackRoute();
         }
       })
-      .catch(() => fallbackRoute());
+      .catch(() => {
+        if (seq !== routeSeqRef.current) return; // ignore failures from stale requests
+        fallbackRoute();
+      });
   };
 
   const fallbackRoute = () => {
