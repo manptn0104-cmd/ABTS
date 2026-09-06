@@ -121,7 +121,6 @@ const initializeSocket = (server) => {
     setInterval(async () => {
       try {
         const availableAmbulances = await Ambulance.find({ isAvailable: true });
-        if (availableAmbulances.length === 0) return;
 
         const speeds = [20, 30, 45, 55, 65, 0];
         const motionStatuses = ['moving', 'moving', 'moving', 'waiting', 'stuck'];
@@ -209,13 +208,13 @@ const initializeSocket = (server) => {
               speed: 0,
               motionStatus: 'at_location',
               trafficLevel: 'clear',
-              eta: 0,  // Already at location
+              eta: 0,
               timestamp: new Date(),
             };
 
             io.to(`booking_${booking._id}`).emit('ambulance_location', payload);
             console.log(`[Simulator] Booking ${booking._id?.toString().slice(-6)}: Ambulance reached pickup location`);
-            continue;  // Skip to next booking
+            continue;
           }
 
           // Move coordinates 8% closer per step (if not at destination)

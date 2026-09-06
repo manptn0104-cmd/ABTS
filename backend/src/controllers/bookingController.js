@@ -369,43 +369,6 @@ exports.updateBookingStatus = async (req, res, next) => {
     io.to(`booking_${booking._id}`).emit('booking_status_update', { status, booking });
 
     res.json({ success: true, message: `Booking ${status}.`, booking });
-
-    // When driver starts the trip, simulate ambulance moving toward pickup
-    if (status === 'in_progress') {
-      const bookingIdStr = booking._id.toString();
-      const userId = booking.user.toString();
-      const ambulanceId = booking.ambulance._id.toString();
-      const pickupCoords = booking.pickupLocation?.coordinates; // [lng, lat]
-      const amb = await Ambulance.findById(ambulanceId);
-
-      if (amb?.currentLocation?.coordinates && pickupCoords) {
-        const [startLng, startLat] = amb.currentLocation.coordinates;
-        const [pickupLng, pickupLat] = pickupCoords;
-        const STEPS = 10;
-
-        for (let i = 0; i <= STEPS; i++) {
-          const frac = i / STEPS;
-          const stepLat = startLat + (pickupLat - startLat) * frac;
-          const stepLng = startLng + (pickupLng - startLng) * frac;
-          const etaMin = Math.round((STEPS - i) * 0.4);
-
-          setTimeout(() => {
-            io.to(`booking_${bookingIdStr}`).emit('ambulance_location', {
-              ambulanceId,
-              latitude: stepLat,
-              longitude: stepLng,
-              eta: etaMin,
-            });
-            io.to(`user_${userId}`).emit('ambulance_location', {
-              ambulanceId,
-              latitude: stepLat,
-              longitude: stepLng,
-              eta: etaMin,
-            });
-          }, i * 3000);
-        }
-      }
-    }
   } catch (error) {
     next(error);
   }

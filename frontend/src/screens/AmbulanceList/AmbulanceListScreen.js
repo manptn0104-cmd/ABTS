@@ -25,7 +25,7 @@ export default function AmbulanceListScreen({ route, navigation }) {
   console.log('==========================================');
 
   const [showFilter, setShowFilter] = useState(false);
-  const [sort, setSort]             = useState('distance'); // distance | rating | price
+  const [sort, setSort]             = useState('smartRank'); // smartRank | distance | rating | price
   const [page, setPage]             = useState(1);
 
   const activeFilterCount = Object.entries(filters).filter(([k, v]) => {
@@ -43,8 +43,9 @@ export default function AmbulanceListScreen({ route, navigation }) {
     params.lng         = lng;
     params.maxDistance = 50000; // 50 km radius
     if (emergencyType) params.emergencyType = emergencyType;
+    if (selectedFacilities.length > 0) params.facilities = selectedFacilities.join(',');
     return params;
-  }, [page, filters, selectedPickup, emergencyType]);
+  }, [page, filters, selectedPickup, emergencyType, selectedFacilities]);
 
   useEffect(() => {
     dispatch(fetchAmbulances(buildParams()));
@@ -58,7 +59,8 @@ export default function AmbulanceListScreen({ route, navigation }) {
   const sortedList = [...list].sort((a, b) => {
     if (sort === 'rating')   return (b.rating?.average ?? 0) - (a.rating?.average ?? 0);
     if (sort === 'price')    return a.basePrice - b.basePrice;
-    return (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity);
+    if (sort === 'distance') return (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity);
+    return 0;
   });
 
   const renderHeader = () => (
@@ -74,6 +76,7 @@ export default function AmbulanceListScreen({ route, navigation }) {
       {/* Sort chips */}
       <View style={styles.sortRow}>
         {[
+          { label: 'Smart Rank', value: 'smartRank' },
           { label: 'Nearest',    value: 'distance' },
           { label: 'Top Rated',  value: 'rating'   },
           { label: 'Cheapest',   value: 'price'    },

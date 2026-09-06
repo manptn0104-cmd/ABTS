@@ -1,6 +1,38 @@
 const Ambulance = require('../models/Ambulance');
 const User = require('../models/User');
 const { validationResult } = require('express-validator');
+const { calculateSmartETA, calculateRankScore } = require('../utils/etaPredictor');
+
+const FACILITY_FIELDS = ['oxygen', 'saline', 'stretcher', 'nurse', 'doctor', 'defibrillator', 'ventilator', 'cctvCamera'];
+
+const getRequestedFacilities = (query) => {
+  const selectedFacilities = Array.isArray(query.facilities)
+    ? query.facilities
+    : [query.facilities];
+  const requestedFacilities = selectedFacilities
+    .filter(Boolean)
+    .flatMap((facilities) => String(facilities).split(','))
+    .map((facility) => facility.trim())
+    .filter((facility) => FACILITY_FIELDS.includes(facility));
+
+  FACILITY_FIELDS.forEach((facility) => {
+    if (query[facility] === 'true') requestedFacilities.push(facility);
+  });
+
+  return [...new Set(requestedFacilities)];
+};
+
+const calculateDistanceKm = (firstCoordinates, secondCoordinates) => {
+  const [firstLongitude, firstLatitude] = firstCoordinates;
+  const [secondLongitude, secondLatitude] = secondCoordinates;
+  const toRadians = (degrees) => (degrees * Math.PI) / 180;
+  const latitudeDifference = toRadians(secondLatitude - firstLatitude);
+  const longitudeDifference = toRadians(secondLongitude - firstLongitude);
+  const haversine = Math.sin(latitudeDifference / 2) ** 2
+    + Math.cos(toRadians(firstLatitude)) * Math.cos(toRadians(secondLatitude)) * Math.sin(longitudeDifference / 2) ** 2;
+
+  return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+};
 
 const getManagementFilter = (req) => {
   if (req.user.role === 'superadmin') return {};
@@ -48,17 +80,22 @@ exports.getAmbulances = async (req, res, next) => {
     if (type) filterQuery.type = type;
     if (emergencyType) filterQuery.specializations = emergencyType;
 
-    ['oxygen', 'saline', 'stretcher', 'nurse', 'doctor', 'defibrillator', 'ventilator'].forEach((f) => {
-      if (req.query[f] === 'true') filterQuery[`facilities.${f}`] = true;
+    const requestedFacilities = getRequestedFacilities(req.query);
+    requestedFacilities.forEach((facility) => {
+      filterQuery[`facilities.${facility}`] = true;
     });
 
     if (minPrice) filterQuery.basePrice = { ...(filterQuery.basePrice || {}), $gte: Number(minPrice) };
     if (maxPrice) filterQuery.basePrice = { ...(filterQuery.basePrice || {}), $lte: Number(maxPrice) };
 
     let ambulances;
-    const skip = (Number(page) - 1) * Number(limit);
+    const requestedPage = Math.max(1, Number.parseInt(page, 10) || 1);
+    const requestedLimit = Math.max(1, Number.parseInt(limit, 10) || 20);
+    const skip = (requestedPage - 1) * requestedLimit;
 
     if (lat && lng) {
+      // Rank a broad proximity pool before applying client pagination or final limit.
+      const candidatePoolSize = Math.max(50, skip + requestedLimit);
       ambulances = await Ambulance.aggregate([
         {
           $geoNear: {
@@ -69,17 +106,7 @@ exports.getAmbulances = async (req, res, next) => {
             spherical: true,
           },
         },
-        { $skip: skip },
-        { $limit: parseInt(limit) },
-        {
-          $addFields: {
-            distanceKm: { $round: [{ $divide: ['$distance', 1000] }, 2] },
-            // ETA at avg speed of 40 km/h, in minutes
-            estimatedArrivalMin: {
-              $round: [{ $multiply: [{ $divide: ['$distance', 1000] }, 1.5] }, 0],
-            },
-          },
-        },
+        { $limit: candidatePoolSize },
         {
           $lookup: {
             from: 'users',
@@ -91,11 +118,40 @@ exports.getAmbulances = async (req, res, next) => {
         },
         { $unwind: { path: '$ownerDetails', preserveNullAndEmptyArrays: true } },
       ]);
+
+      ambulances = ambulances
+        .map((ambulance) => {
+          const estimatedArrivalMin = calculateSmartETA({
+            distanceMeters: ambulance.distance,
+            currentSpeed: ambulance.currentSpeed,
+            trafficLevel: ambulance.trafficLevel,
+            roadType: ambulance.roadType,
+            signalsCount: ambulance.signalsCount,
+            motionStatus: ambulance.motionStatus,
+          });
+          const smartRankScore = calculateRankScore({
+            smartETA: estimatedArrivalMin,
+            ambulanceType: ambulance.type,
+            emergencyType,
+            ratingAverage: ambulance.rating?.average,
+            facilities: ambulance.facilities,
+          });
+
+          return {
+            ...ambulance,
+            distanceKm: Number((ambulance.distance / 1000).toFixed(2)),
+            estimatedArrivalMin,
+            smartRankScore,
+          };
+        })
+        .sort((first, second) => first.smartRankScore - second.smartRankScore)
+        .map((ambulance, index) => ({ ...ambulance, isFastestArrival: index === 0 }))
+        .slice(skip, skip + requestedLimit);
     } else {
       ambulances = await Ambulance.find(filterQuery)
         .populate('owner', 'name phone')
         .skip(skip)
-        .limit(parseInt(limit))
+        .limit(requestedLimit)
         .sort({ 'rating.average': -1 });
     }
 
@@ -105,7 +161,7 @@ exports.getAmbulances = async (req, res, next) => {
       success: true,
       count: ambulances.length,
       total,
-      pages: Math.ceil(total / limit),
+      pages: Math.ceil(total / requestedLimit),
       ambulances,
     });
   } catch (error) {
@@ -116,10 +172,35 @@ exports.getAmbulances = async (req, res, next) => {
 // GET /api/ambulances/:id
 exports.getAmbulance = async (req, res, next) => {
   try {
-    const ambulance = await Ambulance.findById(req.params.id).populate('owner', 'name phone email');
+    const ambulance = await Ambulance.findById(req.params.id).populate('owner', 'name phone email').lean();
     if (!ambulance) {
       return res.status(404).json({ success: false, message: 'Ambulance not found.' });
     }
+
+    const pickupLatitude = Number(req.query.lat);
+    const pickupLongitude = Number(req.query.lng);
+    const ambulanceCoordinates = ambulance.currentLocation?.coordinates;
+    const hasValidPickup = Number.isFinite(pickupLatitude) && Number.isFinite(pickupLongitude);
+    const hasValidAmbulanceLocation = Array.isArray(ambulanceCoordinates)
+      && ambulanceCoordinates.length === 2
+      && ambulanceCoordinates.every(Number.isFinite);
+
+    if (hasValidPickup && hasValidAmbulanceLocation) {
+      const distanceKm = calculateDistanceKm(
+        [pickupLongitude, pickupLatitude],
+        ambulanceCoordinates
+      );
+      ambulance.distanceKm = Number(distanceKm.toFixed(2));
+      ambulance.estimatedArrivalMin = calculateSmartETA({
+        distanceMeters: distanceKm * 1000,
+        currentSpeed: ambulance.currentSpeed,
+        trafficLevel: ambulance.trafficLevel,
+        roadType: ambulance.roadType,
+        signalsCount: ambulance.signalsCount,
+        motionStatus: ambulance.motionStatus,
+      });
+    }
+
     res.json({ success: true, ambulance });
   } catch (error) {
     next(error);

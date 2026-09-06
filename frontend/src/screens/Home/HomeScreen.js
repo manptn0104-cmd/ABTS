@@ -60,41 +60,29 @@ export default function HomeScreen({ navigation }) {
       sock.on('nearby_ambulances_update', (data) => {
         if (data && data.ambulances) {
           console.log('[Socket Live Update] Received real-time ambulance updates:', data.ambulances.length, 'ambulances');
+          const telemetryById = new Map(data.ambulances.map((ambulance) => [ambulance._id, ambulance]));
+          const telemetryFields = [
+            'currentLocation',
+            'currentSpeed',
+            'motionStatus',
+            'trafficLevel',
+            'roadType',
+            'signalsCount',
+            'trafficLabel',
+            'motionLabel',
+            'speed',
+          ];
 
-          let filtered = data.ambulances;
-          
-          if (selectedFacilities.length > 0) {
-            filtered = filtered.filter(amb => 
-              selectedFacilities.every(f => amb.facilities?.[f])
-            );
-          }
+          setLiveAmbulances((rankedAmbulances) => rankedAmbulances.map((ambulance) => {
+            const telemetry = telemetryById.get(ambulance._id);
+            if (!telemetry) return ambulance;
 
-          // Sort by smart ranking score ascending
-          filtered.sort((a, b) => (a.smartRankScore || Infinity) - (b.smartRankScore || Infinity));
-
-          // Debug: Log top 3 ambulances
-          filtered.slice(0, 3).forEach((amb, idx) => {
-            console.log(`[Live Dispatch #${idx + 1}] ${amb.vehicleNumber} | Dist: ${(amb.distanceKm ?? 0).toFixed(2)}km | ETA: ${amb.estimatedArrivalMin ?? '?'}min | Speed: ${amb.currentSpeed ?? 0}km/h | Traffic: ${amb.trafficLabel || 'N/A'} | Motion: ${amb.motionLabel || 'N/A'} | Rank Score: ${(amb.smartRankScore ?? 0).toFixed(2)}`);
-          });
-
-          // Set the fastest flag dynamically
-          if (filtered.length > 0) {
-            let fastestIdx = 0;
-            for (let i = 1; i < filtered.length; i++) {
-              if ((filtered[i].estimatedArrivalMin || Infinity) < (filtered[fastestIdx].estimatedArrivalMin || Infinity)) {
-                fastestIdx = i;
-              }
-            }
-            filtered = filtered.map((amb, idx) => ({
-              ...amb,
-              isFastestArrival: idx === fastestIdx,
-            }));
-            if (filtered[fastestIdx]) {
-              console.log(`[Fastest Arrival] ${filtered[fastestIdx].vehicleNumber} with ${filtered[fastestIdx].estimatedArrivalMin}min ETA`);
-            }
-          }
-
-          setLiveAmbulances(filtered);
+            const updates = telemetryFields.reduce((result, field) => {
+              if (telemetry[field] !== undefined) result[field] = telemetry[field];
+              return result;
+            }, {});
+            return { ...ambulance, ...updates };
+          }));
         }
       });
     };
@@ -386,7 +374,7 @@ export default function HomeScreen({ navigation }) {
               <TouchableOpacity
                 key={t.value}
                 style={styles.typeChip}
-                onPress={() => navigation.navigate('AmbulanceList', { location: effectiveLocation, emergencyType: t.value, searchText, selectedFacilities })}
+                onPress={() => navigation.navigate('AmbulanceList', { selectedPickup: effectiveLocation, emergencyType: t.value, searchText, selectedFacilities })}
               >
                 <MaterialCommunityIcons name={t.icon} size={22} color={Colors.primary} />
                 <Text style={styles.typeLabel}>{t.label}</Text>
@@ -464,7 +452,7 @@ export default function HomeScreen({ navigation }) {
             {liveAmbulances.length > 3 && (
               <TouchableOpacity
                 style={styles.viewAllBtn}
-                onPress={() => navigation.navigate('AmbulanceList', { location, selectedFacilities })}
+                onPress={() => navigation.navigate('AmbulanceList', { selectedPickup: effectiveLocation, selectedFacilities })}
               >
                 <Text style={styles.viewAllText}>View all {liveAmbulances.length} ambulances →</Text>
               </TouchableOpacity>

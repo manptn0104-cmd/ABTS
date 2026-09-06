@@ -15,9 +15,11 @@ export const fetchAmbulances = createAsyncThunk(
 
 export const fetchAmbulanceById = createAsyncThunk(
   'ambulance/fetchById',
-  async (id, { rejectWithValue }) => {
+  async (request, { rejectWithValue }) => {
     try {
-      const res = await ambulanceApi.fetchAmbulance(id);
+      const { id, lat, lng } = typeof request === 'string' ? { id: request } : request;
+      const params = lat !== undefined && lng !== undefined ? { lat, lng } : undefined;
+      const res = await ambulanceApi.fetchAmbulance(id, params);
       return res.data.ambulance;
     } catch (err) {
       return rejectWithValue(err.response?.data?.message || 'Failed to load ambulance details.');
