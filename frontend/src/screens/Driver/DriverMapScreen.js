@@ -5,6 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors, Spacing, BorderRadius, Shadow } from '../../theme';
+import MapComponent from '../../components/MapComponent';
 
 export default function DriverMapScreen({ route, navigation }) {
   const { booking, ambulanceLocation } = route.params;
@@ -34,14 +35,7 @@ export default function DriverMapScreen({ route, navigation }) {
     }
   };
 
-  // View pickup on OpenStreetMap (web-friendly, no API key needed)
-  const openOSMLink = () => {
-    Linking.openURL(`https://www.openstreetmap.org/?mlat=${pickupLat}&mlon=${pickupLng}#map=16/${pickupLat}/${pickupLng}`);
-  };
-
-  // Static map image URL from OpenStreetMap
-  const staticMapUrl = `https://staticmap.openstreetmap.de/staticmap.php?center=${pickupLat},${pickupLng}&zoom=15&size=600x300&markers=${pickupLat},${pickupLng},red-pushpin&maptype=mapnik`;
-
+  
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       {/* Header */}
@@ -55,25 +49,24 @@ export default function DriverMapScreen({ route, navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Map Preview — uses OpenStreetMap static image (works everywhere, no API key) */}
-        <TouchableOpacity style={styles.mapCard} onPress={openOSMLink} activeOpacity={0.85}>
-          <View style={styles.mapImageWrapper}>
-            {Platform.OS === 'web' ? (
-              <img src={staticMapUrl} alt="Pickup Map" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 16 }} />
-            ) : (
-              <View style={styles.mapPlaceholder}>
-                <MaterialCommunityIcons name="map-marker-radius" size={48} color={Colors.primary} />
-                <Text style={styles.mapPlaceholderText}>Tap to view on map</Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.mapOverlay}>
-            <MaterialCommunityIcons name="open-in-new" size={14} color={Colors.white} />
-            <Text style={styles.mapOverlayText}>View on OpenStreetMap</Text>
-          </View>
-        </TouchableOpacity>
-
+     {/* Google Maps */}
+<View style={styles.mapCard}>
+  <MapComponent
+    region={{
+      latitude: pickupLat,
+      longitude: pickupLng,
+      latitudeDelta: 0.05,
+      longitudeDelta: 0.05,
+    }}
+    userLocation={{
+      latitude: pickupLat,
+      longitude: pickupLng,
+    }}
+    ambulanceLocation={ambCoord}
+  />
+</View>
+        
+<ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Location Details Card */}
         <View style={[styles.card, Shadow.medium]}>
           {/* Pickup */}
@@ -183,21 +176,13 @@ const styles = StyleSheet.create({
   content: { padding: Spacing.md },
 
   // Map card
-  mapCard: { borderRadius: 16, overflow: 'hidden', marginBottom: Spacing.md, position: 'relative' },
-  mapImageWrapper: { width: '100%', height: 220, backgroundColor: Colors.border, borderRadius: 16 },
-  mapPlaceholder: {
-    flex: 1, justifyContent: 'center', alignItems: 'center',
-    backgroundColor: '#E8F5E9', borderRadius: 16,
-  },
-  mapPlaceholderText: { fontSize: 13, color: Colors.textSecondary, marginTop: 8 },
-  mapOverlay: {
-    position: 'absolute', bottom: 10, right: 10,
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: BorderRadius.full,
-  },
-  mapOverlayText: { fontSize: 11, color: Colors.white, fontWeight: '600' },
-
+mapCard: {
+  height: 220,
+  borderRadius: 16,
+  overflow: 'hidden',
+  marginBottom: Spacing.md,
+},
+ 
   // Cards
   card: {
     backgroundColor: Colors.surface || '#fff', borderRadius: BorderRadius.lg || 16,
