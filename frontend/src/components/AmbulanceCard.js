@@ -7,9 +7,27 @@ import { FACILITIES } from '../utils/constants';
 
 export default function AmbulanceCard({ ambulance, onPress, style }) {
   const [expanded, setExpanded] = useState(false);
-  const typeConfig    = getAmbulanceType(ambulance.type);
-  const distanceKm    = ambulance.distanceKm ?? null;
-  const etaMin        = ambulance.estimatedArrivalMin ?? null;
+  const typeConfig = getAmbulanceType(ambulance.type);
+  const displayDistanceKm =
+    ambulance.roadDistanceKm ?? ambulance.distanceKm;
+
+  const displayEtaMin =
+    ambulance.etaMinutes ?? ambulance.estimatedArrivalMin;
+  const hasDistance =
+    displayDistanceKm != null;
+
+  const hasEta =
+    displayEtaMin != null;
+
+  const etaFallback =
+    ambulance.etaFallback === true;
+
+  console.log('[TRACE UI]', {
+    vehicleNumber: ambulance.vehicleNumber,
+    displayDistanceKm,
+    displayEtaMin,
+    etaFallback: ambulance.etaFallback,
+  });
   const availFacilities = FACILITIES.filter((f) => ambulance.facilities?.[f.key]);
   const visibleFacilities = expanded ? availFacilities : availFacilities.slice(0, 4);
 
@@ -49,21 +67,54 @@ export default function AmbulanceCard({ ambulance, onPress, style }) {
       </View>
 
       {/* Distance & ETA */}
-      {distanceKm !== null && (
+
+      {/* Distance & ETA */}
+      {(hasDistance || hasEta) && (
         <View style={styles.infoRow}>
+          {hasDistance && (
+            <View style={styles.infoItem}>
+              <MaterialCommunityIcons
+                name="map-marker-distance"
+                size={16}
+                color={Colors.primary}
+              />
+              <Text style={styles.infoText}>
+                {formatDistance(displayDistanceKm * 1000)}
+              </Text>
+            </View>
+          )}
+
+          {hasDistance && hasEta && (
+            <View style={styles.separator} />
+          )}
+
+          {hasEta && (
+            <View style={styles.infoItem}>
+              <MaterialCommunityIcons
+                name="clock-fast"
+                size={16}
+                color={Colors.secondary}
+              />
+              <Text style={styles.infoText}>
+                {formatETA(displayEtaMin)}
+                {etaFallback ? ' (Est.)' : ''}
+              </Text>
+            </View>
+          )}
+
+          {hasDistance && hasEta && (
+            <View style={styles.separator} />
+          )}
+
           <View style={styles.infoItem}>
-            <MaterialCommunityIcons name="map-marker-distance" size={16} color={Colors.primary} />
-            <Text style={styles.infoText}>{formatDistance(distanceKm * 1000)}</Text>
-          </View>
-          <View style={styles.separator} />
-          <View style={styles.infoItem}>
-            <MaterialCommunityIcons name="clock-fast" size={16} color={Colors.secondary} />
-            <Text style={styles.infoText}>{formatETA(etaMin)}</Text>
-          </View>
-          <View style={styles.separator} />
-          <View style={styles.infoItem}>
-            <MaterialCommunityIcons name="currency-inr" size={16} color={Colors.success} />
-            <Text style={styles.infoText}>{formatCurrency(ambulance.basePrice)} base</Text>
+            <MaterialCommunityIcons
+              name="currency-inr"
+              size={16}
+              color={Colors.success}
+            />
+            <Text style={styles.infoText}>
+              {formatCurrency(ambulance.basePrice)} base
+            </Text>
           </View>
         </View>
       )}
@@ -138,16 +189,16 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerRight:{ flexDirection: 'row', alignItems: 'center', gap: 3 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   typeBadge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: BorderRadius.full,
   },
-  typeLabel:     { color: Colors.white, fontSize: 11, fontWeight: '700' },
+  typeLabel: { color: Colors.white, fontSize: 11, fontWeight: '700' },
   vehicleNumber: { fontSize: 15, fontWeight: '700', color: Colors.text },
-  ratingText:    { fontSize: 13, fontWeight: '700', color: Colors.text },
-  ratingCount:   { fontSize: 12, color: Colors.textSecondary },
+  ratingText: { fontSize: 13, fontWeight: '700', color: Colors.text },
+  ratingCount: { fontSize: 12, color: Colors.textSecondary },
   row: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 6 },
   driverName: { fontSize: 13, color: Colors.textSecondary },
   infoRow: {
@@ -159,7 +210,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   infoItem: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4, justifyContent: 'center' },
-  infoText:  { fontSize: 12, fontWeight: '600', color: Colors.text },
+  infoText: { fontSize: 12, fontWeight: '600', color: Colors.text },
   separator: { width: 1, height: 20, backgroundColor: Colors.border },
   facilitiesRow: {
     flexDirection: 'row',
@@ -177,16 +228,16 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
   },
   facilityLabel: { fontSize: 11, color: Colors.secondary, fontWeight: '500' },
-  moreText:      { fontSize: 11, color: Colors.textMuted, alignSelf: 'center' },
+  moreText: { fontSize: 11, color: Colors.textMuted, alignSelf: 'center' },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginTop: 4,
   },
-  availDot:  { width: 8, height: 8, borderRadius: 4 },
+  availDot: { width: 8, height: 8, borderRadius: 4 },
   availText: { fontSize: 12, fontWeight: '600', flex: 1 },
-  bookText:  { fontSize: 12, color: Colors.primary, fontWeight: '600' },
+  bookText: { fontSize: 12, color: Colors.primary, fontWeight: '600' },
   fastestBadge: {
     backgroundColor: '#FFF9C4',
     borderWidth: 1,

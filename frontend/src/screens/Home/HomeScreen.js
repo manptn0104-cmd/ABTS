@@ -61,27 +61,33 @@ export default function HomeScreen({ navigation }) {
         if (data && data.ambulances) {
           console.log('[Socket Live Update] Received real-time ambulance updates:', data.ambulances.length, 'ambulances');
           const telemetryById = new Map(data.ambulances.map((ambulance) => [ambulance._id, ambulance]));
-          const telemetryFields = [
-            'currentLocation',
-            'currentSpeed',
-            'motionStatus',
-            'trafficLevel',
-            'roadType',
-            'signalsCount',
-            'trafficLabel',
-            'motionLabel',
-            'speed',
-          ];
 
           setLiveAmbulances((rankedAmbulances) => rankedAmbulances.map((ambulance) => {
             const telemetry = telemetryById.get(ambulance._id);
             if (!telemetry) return ambulance;
 
-            const updates = telemetryFields.reduce((result, field) => {
-              if (telemetry[field] !== undefined) result[field] = telemetry[field];
-              return result;
-            }, {});
-            return { ...ambulance, ...updates };
+            // Step 10: Cleaned merge filtering null and undefined
+            const cleanedUpdate = Object.fromEntries(
+              Object.entries(telemetry).filter(
+                ([key, value]) => value !== null && value !== undefined
+              )
+            );
+
+            // Socket telemetry must NOT erase routing fields calculated for the selected pickup
+            if (telemetry.roadDistanceKm === null || telemetry.roadDistanceKm === undefined) {
+              delete cleanedUpdate.roadDistanceKm;
+              delete cleanedUpdate.etaMinutes;
+              delete cleanedUpdate.estimatedArrivalMin;
+              delete cleanedUpdate.etaFallback;
+              delete cleanedUpdate.distanceKm;
+              delete cleanedUpdate.smartRankScore;
+              delete cleanedUpdate.isFastestArrival;
+            }
+
+            return {
+              ...ambulance,
+              ...cleanedUpdate,
+            };
           }));
         }
       });
@@ -152,6 +158,7 @@ export default function HomeScreen({ navigation }) {
     setAddress(s.shortLabel);
     setMapRegion({ latitude: s.lat, longitude: s.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 });
     // Fetch ambulances for the manually selected location
+    console.log('[TRACE PICKUP]', { source: 'manual', latitude: s.lat, longitude: s.lng });
     dispatch(fetchAmbulances({
       lat: s.lat, lng: s.lng, maxDistance: 50000, available: 'true', limit: 20,
       facilities: selectedFacilities.length > 0 ? selectedFacilities.join(',') : undefined,
@@ -185,6 +192,7 @@ export default function HomeScreen({ navigation }) {
     const lat = loc.coords ? loc.coords.latitude : loc.latitude;
     const lng = loc.coords ? loc.coords.longitude : loc.longitude;
 
+    console.log('[TRACE PICKUP]', { source: 'initial', latitude: lat, longitude: lng });
     dispatch(fetchAmbulances({
       lat,
       lng,
@@ -204,6 +212,7 @@ export default function HomeScreen({ navigation }) {
       latitudeDelta:  0.05,
       longitudeDelta: 0.05,
     });
+    console.log('[TRACE PICKUP]', { source: 'gps', latitude: location.latitude, longitude: location.longitude });
     dispatch(fetchAmbulances({
       lat: location.latitude,
       lng: location.longitude,

@@ -68,6 +68,21 @@ const ambulanceSchema = new mongoose.Schema(
         default: '',
       },
     },
+    baseLocation: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point',
+      },
+      coordinates: {
+        type: [Number], // [longitude, latitude]
+        default: [0, 0],
+      },
+      address: {
+        type: String,
+        default: '',
+      },
+    },
     rating: {
       average: { type: Number, default: 0, min: 0, max: 5 },
       count:   { type: Number, default: 0 },
@@ -97,6 +112,7 @@ const ambulanceSchema = new mongoose.Schema(
 );
 
 ambulanceSchema.index({ currentLocation: '2dsphere' });
+ambulanceSchema.index({ baseLocation: '2dsphere' });
 ambulanceSchema.index({ isAvailable: 1, type: 1 });
 
 module.exports = mongoose.model('Ambulance', ambulanceSchema);

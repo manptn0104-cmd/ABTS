@@ -6,6 +6,7 @@ require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Ambulance = require('../models/Ambulance');
+const Organization = require('../models/Organization');
 
 const seed = async () => {
   await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/abts');
@@ -13,6 +14,30 @@ const seed = async () => {
 
   await User.deleteMany({});
   await Ambulance.deleteMany({});
+  await Organization.deleteMany({});
+
+  // Create demo organization
+  const organization = await Organization.create({
+    organizationName: 'ABTS Demo Organization',
+    organizationCode: 'ABTSDEMO',
+    registrationNumber: 'ABTS-DEMO-001',
+    contactPerson: 'ABTS Admin',
+    address: 'Bangalore',
+    mobileNumber: '9000000000',
+    email: 'demo@abts.com',
+    city: 'Bangalore',
+    state: 'Karnataka',
+    country: 'India',
+    subscriptionPlan: 'enterprise',
+    subscriptionExpiryDate: null,
+    maximumAmbulanceLimit: 20,
+    maximumDriverLimit: 20,
+    maximumUserLimit: 100,
+    status: 'active',
+    isDeleted: false,
+  });
+
+  console.log('✅ Organization created:', organization.organizationName);
 
   const admin = await User.create({
     name: 'Admin',
@@ -20,6 +45,7 @@ const seed = async () => {
     phone: '1000000001',
     password: 'Admin@123',
     role: 'admin',
+    organizationId: organization._id,
     isVerified: true,
   });
 
@@ -29,6 +55,7 @@ const seed = async () => {
     phone: '9000000001',
     password: 'Driver@123',
     role: 'driver',
+    organizationId: organization._id,
     isVerified: true,
   });
 
@@ -38,6 +65,7 @@ const seed = async () => {
     phone: '9000000002',
     password: 'Driver@123',
     role: 'driver',
+    organizationId: organization._id,
     isVerified: true,
   });
 
@@ -47,6 +75,7 @@ const seed = async () => {
     phone: '9100000001',
     password: 'Driver@123',
     role: 'driver',
+    organizationId: organization._id,
     isVerified: true,
   });
 
@@ -56,6 +85,7 @@ const seed = async () => {
     phone: '9100000002',
     password: 'Driver@123',
     role: 'driver',
+    organizationId: organization._id,
     isVerified: true,
   });
 
@@ -65,6 +95,7 @@ const seed = async () => {
     phone: '9000000003',
     password: 'Driver@123',
     role: 'driver',
+    organizationId: organization._id,
     isVerified: true,
   });
 
@@ -74,6 +105,7 @@ const seed = async () => {
     phone: '9100000003',
     password: 'Driver@123',
     role: 'driver',
+    organizationId: organization._id,
     isVerified: true,
   });
 
@@ -83,6 +115,7 @@ const seed = async () => {
     phone: '9000000004',
     password: 'Driver@123',
     role: 'driver',
+    organizationId: organization._id,
     isVerified: true,
   });
 
@@ -92,6 +125,7 @@ const seed = async () => {
     phone: '9100000004',
     password: 'Driver@123',
     role: 'driver',
+    organizationId: organization._id,
     isVerified: true,
   });
 
@@ -101,6 +135,7 @@ const seed = async () => {
     phone: '9100000005',
     password: 'Driver@123',
     role: 'driver',
+    organizationId: organization._id,
     isVerified: true,
   });
 
@@ -110,6 +145,7 @@ const seed = async () => {
     phone: '9200000005',
     password: 'Driver@123',
     role: 'driver',
+    organizationId: organization._id,
     isVerified: true,
   });
 
@@ -119,6 +155,7 @@ const seed = async () => {
     phone: '9100000006',
     password: 'Driver@123',
     role: 'driver',
+    organizationId: organization._id,
     isVerified: true,
   });
 
@@ -128,6 +165,7 @@ const seed = async () => {
     phone: '9100000007',
     password: 'Driver@123',
     role: 'driver',
+    organizationId: organization._id,
     isVerified: true,
   });
 
@@ -137,6 +175,7 @@ const seed = async () => {
     phone: '9100000008',
     password: 'Driver@123',
     role: 'driver',
+    organizationId: organization._id,
     isVerified: true,
   });
 
@@ -161,8 +200,10 @@ const seed = async () => {
       facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: false, defibrillator: false, ventilator: false, cctvCamera: true },
       pricePerKm: 25, basePrice: 500, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.596, 12.97], address: 'Indiranagar, Bangalore' },
+      baseLocation: { type: 'Point', coordinates: [77.596, 12.97], address: 'Indiranagar, Bangalore' },
       rating: { average: 4.6, count: 28 },
       owner: driver1._id,
+      organizationId: organization._id,
     },
     {
       vehicleNumber: 'KA02AMB001',
@@ -174,8 +215,10 @@ const seed = async () => {
       facilities: { oxygen: true, saline: true, stretcher: true, nurse: false, doctor: false, defibrillator: false, ventilator: false, cctvCamera: false },
       pricePerKm: 15, basePrice: 300, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.580, 12.960], address: 'Koramangala, Bangalore' },
+      baseLocation: { type: 'Point', coordinates: [77.580, 12.960], address: 'Koramangala, Bangalore' },
       rating: { average: 4.1, count: 12 },
       owner: driver3._id,
+      organizationId: organization._id,
     },
 
     // ── Cardiac ─────────────────────────────────────────────────────────────
@@ -189,8 +232,10 @@ const seed = async () => {
       facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: true, defibrillator: true, ventilator: true, cctvCamera: true },
       pricePerKm: 55, basePrice: 1200, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.696, 12.95], address: 'Whitefield, Bangalore' },
+      baseLocation: { type: 'Point', coordinates: [77.696, 12.95], address: 'Whitefield, Bangalore' },
       rating: { average: 4.9, count: 42 },
       owner: driver2._id,
+      organizationId: organization._id,
     },
     {
       vehicleNumber: 'KA04AMB002',
@@ -202,8 +247,10 @@ const seed = async () => {
       facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: false, defibrillator: true, ventilator: false, cctvCamera: true },
       pricePerKm: 35, basePrice: 700, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.640, 12.980], address: 'HAL, Bangalore' },
+      baseLocation: { type: 'Point', coordinates: [77.640, 12.980], address: 'HAL, Bangalore' },
       rating: { average: 4.5, count: 19 },
       owner: driver4._id,
+      organizationId: organization._id,
     },
 
     // ── Respiratory ─────────────────────────────────────────────────────────
@@ -217,8 +264,10 @@ const seed = async () => {
       facilities: { oxygen: true, saline: false, stretcher: true, nurse: false, doctor: false, defibrillator: false, ventilator: false, cctvCamera: false },
       pricePerKm: 15, basePrice: 300, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.5946, 12.9716], address: 'MG Road, Bangalore' },
+      baseLocation: { type: 'Point', coordinates: [77.5946, 12.9716], address: 'MG Road, Bangalore' },
       rating: { average: 4.2, count: 15 },
       owner: driver5._id,
+      organizationId: organization._id,
     },
     {
       vehicleNumber: 'KA06AMB003',
@@ -230,8 +279,10 @@ const seed = async () => {
       facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: true, defibrillator: false, ventilator: true, cctvCamera: true },
       pricePerKm: 50, basePrice: 1100, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.622, 12.935], address: 'HSR Layout, Bangalore' },
+      baseLocation: { type: 'Point', coordinates: [77.622, 12.935], address: 'HSR Layout, Bangalore' },
       rating: { average: 4.7, count: 33 },
       owner: driver6._id,
+      organizationId: organization._id,
     },
 
     // ── Trauma ──────────────────────────────────────────────────────────────
@@ -245,8 +296,10 @@ const seed = async () => {
       facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: false, defibrillator: false, ventilator: false, cctvCamera: true },
       pricePerKm: 30, basePrice: 600, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.5619, 12.9279], address: 'Jayanagar, Bangalore' },
+      baseLocation: { type: 'Point', coordinates: [77.5619, 12.9279], address: 'Jayanagar, Bangalore' },
       rating: { average: 4.7, count: 19 },
       owner: driver7._id,
+      organizationId: organization._id,
     },
     {
       vehicleNumber: 'KA08AMB004',
@@ -258,8 +311,10 @@ const seed = async () => {
       facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: true, defibrillator: true, ventilator: false, cctvCamera: false },
       pricePerKm: 45, basePrice: 950, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.548, 12.915], address: 'Banashankari, Bangalore' },
+      baseLocation: { type: 'Point', coordinates: [77.548, 12.915], address: 'Banashankari, Bangalore' },
       rating: { average: 4.4, count: 24 },
       owner: driver8._id,
+      organizationId: organization._id,
     },
 
     // ── Maternity ───────────────────────────────────────────────────────────
@@ -273,8 +328,10 @@ const seed = async () => {
       facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: true, defibrillator: false, ventilator: false, cctvCamera: true },
       pricePerKm: 40, basePrice: 800, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.607, 13.003], address: 'Hebbal, Bangalore' },
+      baseLocation: { type: 'Point', coordinates: [77.607, 13.003], address: 'Hebbal, Bangalore' },
       rating: { average: 4.8, count: 31 },
       owner: driver9._id,
+      organizationId: organization._id,
     },
     {
       vehicleNumber: 'KA10AMB005',
@@ -286,8 +343,10 @@ const seed = async () => {
       facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: false, defibrillator: false, ventilator: false, cctvCamera: false },
       pricePerKm: 35, basePrice: 750, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.635, 12.913], address: 'BTM Layout, Bangalore' },
+      baseLocation: { type: 'Point', coordinates: [77.635, 12.913], address: 'BTM Layout, Bangalore' },
       rating: { average: 4.6, count: 17 },
       owner: driver10._id,
+      organizationId: organization._id,
     },
 
     // ── General ─────────────────────────────────────────────────────────────
@@ -301,11 +360,13 @@ const seed = async () => {
       facilities: { oxygen: false, saline: true, stretcher: true, nurse: false, doctor: false, defibrillator: false, ventilator: false, cctvCamera: false },
       pricePerKm: 12, basePrice: 250, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.572, 12.989], address: 'Rajajinagar, Bangalore' },
+      baseLocation: { type: 'Point', coordinates: [77.572, 12.989], address: 'Rajajinagar, Bangalore' },
       rating: { average: 4.0, count: 8 },
       owner: driver11._id,
+      organizationId: organization._id,
     },
 
-    // â”€â”€ Other â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── Other ───────────────────────────────────────────────────────────────
     {
       vehicleNumber: 'KA12AMB007',
       driverName: 'Rajan Pillai',
@@ -316,8 +377,10 @@ const seed = async () => {
       facilities: { oxygen: false, saline: true, stretcher: true, nurse: false, doctor: false, defibrillator: false, ventilator: false },
       pricePerKm: 10, basePrice: 200, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.553, 12.942], address: 'Vijayanagar, Bangalore' },
+      baseLocation: { type: 'Point', coordinates: [77.553, 12.942], address: 'Vijayanagar, Bangalore' },
       rating: { average: 3.9, count: 6 },
       owner: driver12._id,
+      organizationId: organization._id,
     },
     {
       vehicleNumber: 'KA13AMB008',
@@ -329,8 +392,10 @@ const seed = async () => {
       facilities: { oxygen: true, saline: true, stretcher: true, nurse: true, doctor: true, defibrillator: true, ventilator: true },
       pricePerKm: 60, basePrice: 1500, isAvailable: true,
       currentLocation: { type: 'Point', coordinates: [77.590, 12.965], address: 'Central Bangalore' },
+      baseLocation: { type: 'Point', coordinates: [77.590, 12.965], address: 'Central Bangalore' },
       rating: { average: 5.0, count: 52 },
       owner: driver13._id,
+      organizationId: organization._id,
     },
   ]);
   console.log('\nSeed complete! 13 ambulances + 15 users added.');

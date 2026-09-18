@@ -15,27 +15,48 @@ import { Colors, Spacing, BorderRadius, Shadow } from '../../theme';
 import { getBookingStatus, formatDateTime, formatCurrency } from '../../utils/helpers';
 
 const STATUS_TABS = [
-  { label: 'All',         value: '' },
-  { label: 'Active',      value: 'confirmed' },
-  { label: 'Completed',   value: 'completed' },
-  { label: 'Cancelled',   value: 'cancelled' },
+  { label: 'All', value: 'all' },
+  { label: 'Active', value: 'active' },
+  { label: 'Completed', value: 'completed' },
+  { label: 'Cancelled', value: 'cancelled' },
 ];
-
 export default function MyBookingsScreen({ navigation }) {
   const dispatch = useDispatch();
   const { list: bookings, isLoading, total } = useSelector((s) => s.booking);
-  const [activeTab, setActiveTab]     = useState('');
-  const [cancellingId, setCancellingId]   = useState(null);
+  const [activeTab, setActiveTab] = useState('all');
+  const [cancellingId, setCancellingId] = useState(null);
   const [confirmCancelId, setConfirmCancelId] = useState(null);
   const { connect } = useSocket();
   const socketRef = useRef(null);
 
-  const load = (status) => {
-    dispatch(fetchMyBookings({ status: status || undefined, limit: 20 }));
+  const load = () => {
+    dispatch(fetchMyBookings({ limit: 20 }));
   };
 
-  useEffect(() => { load(activeTab); }, [activeTab]);
+  useEffect(() => {
+    load();
+  }, [activeTab]);
 
+  // Filter bookings based on selected tab
+  const filteredBookings = bookings.filter((booking) => {
+    if (activeTab === 'all') {
+      return true;
+    }
+
+    if (activeTab === 'active') {
+      return ['pending', 'confirmed', 'in_progress'].includes(booking.status);
+    }
+
+    if (activeTab === 'completed') {
+      return booking.status === 'completed';
+    }
+
+    if (activeTab === 'cancelled') {
+      return ['cancelled', 'rejected', 'unavailable'].includes(booking.status);
+    }
+
+    return true;
+  });
   // Real-time status updates via socket
   useEffect(() => {
     let mounted = true;
@@ -67,8 +88,7 @@ export default function MyBookingsScreen({ navigation }) {
       const res = await cancelBooking(bookingId);
       if (res.data?.success) {
         dispatch(updateBookingInList({ bookingId, status: 'cancelled' }));
-        // reload current tab so server-filtered lists stay consistent
-        load(activeTab);
+        load();
       }
     } catch (e) {
       // silently log; user can retry
@@ -79,8 +99,8 @@ export default function MyBookingsScreen({ navigation }) {
   };
 
   const renderBooking = ({ item }) => {
-    const statusCfg  = getBookingStatus(item.status);
-    const isActive   = ['pending', 'confirmed', 'in_progress'].includes(item.status);
+    const statusCfg = getBookingStatus(item.status);
+    const isActive = ['pending', 'confirmed', 'in_progress'].includes(item.status);
     const isCancellable = ['pending', 'confirmed'].includes(item.status);
     const isCompleted = item.status === 'completed';
 
@@ -217,7 +237,7 @@ export default function MyBookingsScreen({ navigation }) {
         <LoadingSpinner message="Loading your bookings…" fullscreen />
       ) : (
         <FlatList
-          data={bookings}
+          data={filteredBookings}
           keyExtractor={(item) => item._id}
           renderItem={renderBooking}
           contentContainerStyle={styles.list}
@@ -242,14 +262,14 @@ export default function MyBookingsScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe:   { flex: 1, backgroundColor: Colors.background },
+  safe: { flex: 1, backgroundColor: Colors.background },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
     backgroundColor: Colors.primary,
   },
-  headerTitle:{ fontSize: 20, fontWeight: '700', color: Colors.white },
-  headerCount:{ fontSize: 13, color: 'rgba(255,255,255,0.8)' },
+  headerTitle: { fontSize: 20, fontWeight: '700', color: Colors.white },
+  headerCount: { fontSize: 13, color: 'rgba(255,255,255,0.8)' },
   tabs: {
     flexDirection: 'row',
     backgroundColor: Colors.surface,
@@ -258,9 +278,9 @@ const styles = StyleSheet.create({
   },
   tab: { paddingVertical: Spacing.md, paddingHorizontal: Spacing.sm, marginRight: Spacing.sm },
   tabActive: { borderBottomWidth: 2, borderBottomColor: Colors.primary },
-  tabText:   { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
+  tabText: { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
   tabTextActive: { color: Colors.primary, fontWeight: '700' },
-  list:  { padding: Spacing.md, paddingBottom: 32 },
+  list: { padding: Spacing.md, paddingBottom: 32 },
   card: {
     backgroundColor: Colors.surface,
     borderRadius: BorderRadius.lg,
@@ -268,31 +288,31 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.sm },
-  bookingId:  { fontSize: 14, fontWeight: '700', color: Colors.text },
-  statusBadge:{ paddingHorizontal: 10, paddingVertical: 3, borderRadius: BorderRadius.full },
+  bookingId: { fontSize: 14, fontWeight: '700', color: Colors.text },
+  statusBadge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: BorderRadius.full },
   statusText: { fontSize: 12, fontWeight: '700' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   vehicleText: { fontSize: 14, fontWeight: '600', color: Colors.text },
-  locationText:{ flex: 1, fontSize: 13, color: Colors.textSecondary },
-  cardFooter:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  timeText:    { fontSize: 12, color: Colors.textMuted },
-  fareText:    { fontSize: 14, fontWeight: '700', color: Colors.primary },
-  trackRow:    { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: Spacing.sm, backgroundColor: '#E3F2FD', borderRadius: 6, padding: 6 },
-  trackText:   { fontSize: 12, color: Colors.secondary, fontWeight: '600' },
-  rateText:    { fontSize: 12, color: Colors.warning, fontWeight: '700' },
-  actionRow:   { flexDirection: 'row', gap: 8, marginTop: Spacing.sm },
-  trackBtn:    { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#E3F2FD', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
-  cancelBtn:   { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFEBEE', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: '#FFCDD2', minWidth: 44, justifyContent: 'center' },
-  rateBtn:     { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF8E1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: '#FFECB3' },
+  locationText: { flex: 1, fontSize: 13, color: Colors.textSecondary },
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  timeText: { fontSize: 12, color: Colors.textMuted },
+  fareText: { fontSize: 14, fontWeight: '700', color: Colors.primary },
+  trackRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: Spacing.sm, backgroundColor: '#E3F2FD', borderRadius: 6, padding: 6 },
+  trackText: { fontSize: 12, color: Colors.secondary, fontWeight: '600' },
+  rateText: { fontSize: 12, color: Colors.warning, fontWeight: '700' },
+  actionRow: { flexDirection: 'row', gap: 8, marginTop: Spacing.sm },
+  trackBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#E3F2FD', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
+  cancelBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFEBEE', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: '#FFCDD2', minWidth: 44, justifyContent: 'center' },
+  rateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF8E1', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: '#FFECB3' },
   cancelBtnText: { fontSize: 12, color: Colors.error, fontWeight: '700' },
-  confirmRow:    { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF3E0', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: '#FFCC80' },
-  confirmText:   { flex: 1, fontSize: 12, color: '#E65100', fontWeight: '600' },
+  confirmRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFF3E0', borderRadius: 8, padding: 8, borderWidth: 1, borderColor: '#FFCC80' },
+  confirmText: { flex: 1, fontSize: 12, color: '#E65100', fontWeight: '600' },
   confirmYesBtn: { backgroundColor: Colors.error, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6, minWidth: 80, alignItems: 'center' },
-  confirmYesText:{ fontSize: 12, color: '#fff', fontWeight: '700' },
-  confirmNoBtn:  { backgroundColor: Colors.surface, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: Colors.border },
+  confirmYesText: { fontSize: 12, color: '#fff', fontWeight: '700' },
+  confirmNoBtn: { backgroundColor: Colors.surface, borderRadius: 6, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: Colors.border },
   confirmNoText: { fontSize: 12, color: Colors.textSecondary, fontWeight: '600' },
   empty: { alignItems: 'center', paddingVertical: Spacing.xxl },
-  emptyEmoji:   { fontSize: 48 },
-  emptyTitle:   { fontSize: 16, fontWeight: '700', color: Colors.text, marginTop: Spacing.md },
-  emptySubtitle:{ fontSize: 14, color: Colors.textSecondary, marginTop: 4 },
+  emptyEmoji: { fontSize: 48 },
+  emptyTitle: { fontSize: 16, fontWeight: '700', color: Colors.text, marginTop: Spacing.md },
+  emptySubtitle: { fontSize: 14, color: Colors.textSecondary, marginTop: 4 },
 });

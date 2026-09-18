@@ -449,11 +449,11 @@ export default function BookingConfirmationScreen({ route, navigation }) {
           <View style={styles.infoRow}>
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Distance</Text>
-              <Text style={styles.infoValue}>{formatDistance(distanceKm * 1000)}</Text>
+              <Text style={styles.infoValue}>{formatDistance((ambulance.roadDistanceKm ?? distanceKm) * 1000)}</Text>
             </View>
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>ETA</Text>
-              <Text style={styles.infoValue}>{formatETA(ambulance.estimatedArrivalMin ?? Math.round(distanceKm * 1.5))}</Text>
+              <Text style={styles.infoValue}>{formatETA(ambulance.etaMinutes ?? (ambulance.estimatedArrivalMin ?? Math.round(distanceKm * 1.5)))}{ambulance.etaFallback ? ' (Est.)' : ''}</Text>
             </View>
             <View style={styles.infoItem}>
               <Text style={styles.infoLabel}>Base Fare</Text>

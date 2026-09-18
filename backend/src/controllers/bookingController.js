@@ -8,9 +8,14 @@ const getOrganizationFilter = (req) => (
 );
 
 const getMyBookingsFilter = (req) => {
-  const filter = getOrganizationFilter(req);
-  if (req.user.role === 'user') filter.user = req.user.id;
-  return filter;
+  // Patients can book ambulances from any organization.
+  // Their booking history should be filtered only by their own user ID.
+  if (req.user.role === 'user') {
+    return { user: req.user.id };
+  }
+
+  // Admin/driver users remain organization-isolated.
+  return getOrganizationFilter(req);
 };
 
 const isAssignedDriver = (booking, req) => {
@@ -302,10 +307,13 @@ exports.updateBookingStatus = async (req, res, next) => {
           booking,
         });
       } else {
-        // No ambulance available – mark as rejected and record history
+        // No ambulance available – this is a FINAL unavailable state.
         console.log('[DRIVER REJECT] No available ambulances for reassignment.');
-        booking.status = 'rejected';
-        booking.rejectionReason = rejectionReason || 'No available ambulances in the area.';
+
+        booking.status = 'unavailable';
+        booking.rejectionReason =
+          rejectionReason || 'No available ambulances in the area.';
+
         if (ambulance) {
           booking.previousAssignments.push({
             ambulanceId: ambulance._id,
@@ -317,20 +325,31 @@ exports.updateBookingStatus = async (req, res, next) => {
             vehicleNumber: ambulance.vehicleNumber || 'Unknown',
           });
         }
+
         await booking.save();
-        // Notify user of final rejection
+
         const io = getIO();
         const userId = booking.user._id || booking.user;
-        io.to(`user_${userId}`).emit('booking_status_update', {
+
+        // Final failure event for the user.
+        io.to(`user_${userId}`).emit('booking_unavailable', {
           bookingId: booking._id,
-          status: 'rejected',
-          message: `Your booking was rejected by the driver: ${booking.rejectionReason}`,
+          status: 'unavailable',
+          message:
+            `Your booking could not be reassigned because no other ambulances are available. ${booking.rejectionReason}`,
           booking,
         });
-        io.to(`booking_${booking._id}`).emit('booking_status_update', { status: 'rejected', booking });
+
+        // Also notify the booking tracking room.
+        io.to(`booking_${booking._id}`).emit('booking_unavailable', {
+          bookingId: booking._id,
+          status: 'unavailable',
+          booking,
+        });
+
         return res.json({
           success: true,
-          message: 'Booking rejected. No other ambulances available.',
+          message: 'Booking unavailable. No other ambulances available.',
           booking,
         });
       }

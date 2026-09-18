@@ -70,13 +70,22 @@ export default function AmbulanceDetailsScreen({ route, navigation }) {
               <>
                 <View style={styles.stat}>
                   <MaterialCommunityIcons name="map-marker-distance" size={18} color={Colors.primary} />
-                  <Text style={styles.statValue}>{formatDistance(ambulance.distanceKm === undefined ? undefined : ambulance.distanceKm * 1000)}</Text>
+                  <Text style={styles.statValue}>
+                    {formatDistance(
+                      (ambulance.roadDistanceKm ?? ambulance.distanceKm) != null
+                        ? (ambulance.roadDistanceKm ?? ambulance.distanceKm) * 1000
+                        : undefined
+                    )}
+                  </Text>
                   <Text style={styles.statLabel}>Distance</Text>
                 </View>
                 <View style={styles.statDivider} />
                 <View style={styles.stat}>
                   <MaterialCommunityIcons name="clock-fast" size={18} color={Colors.secondary} />
-                  <Text style={styles.statValue}>{formatETA(ambulance.estimatedArrivalMin)}</Text>
+                  <Text style={styles.statValue}>
+                    {formatETA(ambulance.etaMinutes ?? ambulance.estimatedArrivalMin)}
+                    {ambulance.etaFallback ? ' (Est.)' : ''}
+                  </Text>
                   <Text style={styles.statLabel}>ETA</Text>
                 </View>
                 <View style={styles.statDivider} />

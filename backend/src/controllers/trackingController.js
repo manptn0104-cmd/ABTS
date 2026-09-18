@@ -80,6 +80,14 @@ exports.saveLocation = async (req, res, next) => {
       accuracy: accuracy || 0,
     });
 
+    const amb = await Ambulance.findById(req.params.ambulanceId).select('vehicleNumber currentLocation');
+    console.log('[TRACE LOCATION UPDATE]', {
+      vehicleNumber: amb ? amb.vehicleNumber : req.params.ambulanceId,
+      oldCoordinates: amb?.currentLocation?.coordinates,
+      newCoordinates: [lng, lat],
+      source: 'trackingController.saveLocation',
+    });
+
     await Ambulance.findByIdAndUpdate(req.params.ambulanceId, {
       currentLocation: { type: 'Point', coordinates: [lng, lat] },
     });

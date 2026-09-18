@@ -2,6 +2,10 @@ const Ambulance = require('../models/Ambulance');
 const User = require('../models/User');
 const { validationResult } = require('express-validator');
 const { calculateSmartETA, calculateRankScore } = require('../utils/etaPredictor');
+// Routing service for road‑distance & traffic‑aware ETA
+const { getRoadInfo, RoutingError } = require('../services/routingService');
+// Configurable number of candidates to actually route (default 5)
+const MAX_ROUTED_CANDIDATES = Number(process.env.MAX_ROUTED_CANDIDATES || 5);
 
 const FACILITY_FIELDS = ['oxygen', 'saline', 'stretcher', 'nurse', 'doctor', 'defibrillator', 'ventilator', 'cctvCamera'];
 
@@ -66,6 +70,7 @@ const getAmbulanceUpdates = (body) => {
 // GET /api/ambulances
 exports.getAmbulances = async (req, res, next) => {
   try {
+    console.log('[TRACE API REQUEST]', { path: req.originalUrl || req.url, method: req.method });
     const {
       lat, lng,
       maxDistance = 20000,
@@ -74,6 +79,7 @@ exports.getAmbulances = async (req, res, next) => {
       emergencyType,
       page = 1, limit = 20,
     } = req.query;
+    console.log('[TRACE API INPUT]', { lat, lng, maxDistance, type, available, minPrice, maxPrice, emergencyType, page, limit });
 
     const filterQuery = {};
     if (available !== 'all') filterQuery.isAvailable = available !== 'false';
@@ -94,12 +100,15 @@ exports.getAmbulances = async (req, res, next) => {
     const skip = (requestedPage - 1) * requestedLimit;
 
     if (lat && lng) {
+      const pickupLat = parseFloat(lat);
+      const pickupLng = parseFloat(lng);
       // Rank a broad proximity pool before applying client pagination or final limit.
       const candidatePoolSize = Math.max(50, skip + requestedLimit);
       ambulances = await Ambulance.aggregate([
         {
           $geoNear: {
-            near: { type: 'Point', coordinates: [parseFloat(lng), parseFloat(lat)] },
+            near: { type: 'Point', coordinates: [pickupLng, pickupLat] },
+            key: 'currentLocation',
             distanceField: 'distance',
             maxDistance: parseInt(maxDistance),
             query: filterQuery,
@@ -119,16 +128,101 @@ exports.getAmbulances = async (req, res, next) => {
         { $unwind: { path: '$ownerDetails', preserveNullAndEmptyArrays: true } },
       ]);
 
-      ambulances = ambulances
-        .map((ambulance) => {
-          const estimatedArrivalMin = calculateSmartETA({
-            distanceMeters: ambulance.distance,
-            currentSpeed: ambulance.currentSpeed,
-            trafficLevel: ambulance.trafficLevel,
-            roadType: ambulance.roadType,
-            signalsCount: ambulance.signalsCount,
-            motionStatus: ambulance.motionStatus,
-          });
+      console.log('[TRACE AMBULANCE COUNT]', ambulances.length);
+
+      const destination = {
+        latitude: Number(pickupLat),
+        longitude: Number(pickupLng),
+      };
+
+      // Enrich ambulances with road-distance & traffic-aware ETA using baseLocation as authoritative routing origin
+      const enriched = await Promise.allSettled(
+        ambulances.map(async (ambulance) => {
+          const coordinates = ambulance.baseLocation?.coordinates;
+          const hasValidBase =
+            Array.isArray(coordinates) &&
+            coordinates.length === 2 &&
+            typeof coordinates[0] === 'number' &&
+            typeof coordinates[1] === 'number' &&
+            !Number.isNaN(coordinates[0]) &&
+            !Number.isNaN(coordinates[1]) &&
+            (coordinates[0] !== 0 || coordinates[1] !== 0);
+
+          let origin = null;
+          if (hasValidBase) {
+            origin = {
+              latitude: Number(coordinates[1]),
+              longitude: Number(coordinates[0]),
+            };
+            console.log('[TRACE BASE LOCATION]', {
+              vehicleNumber: ambulance.vehicleNumber,
+              coordinates,
+              latitude: origin.latitude,
+              longitude: origin.longitude,
+            });
+          } else {
+            console.warn('[TRACE BASE LOCATION]', {
+              vehicleNumber: ambulance.vehicleNumber,
+              coordinates,
+              warning: 'Missing or invalid baseLocation coordinates',
+            });
+          }
+
+          let roadDistanceKm = null;
+          let etaMinutes = null;
+          let etaFallback = false;
+          let estimatedArrivalMin = null;
+
+          const straightDistanceKm = typeof ambulance.distance === 'number'
+            ? Number((ambulance.distance / 1000).toFixed(2))
+            : null;
+          let distanceKmField = straightDistanceKm;
+
+          if (origin) {
+            console.log('[TRACE ROUTE INPUT]', {
+              vehicleNumber: ambulance.vehicleNumber,
+              origin,
+              destination,
+            });
+
+            try {
+              const route = await getRoadInfo(origin, destination);
+              roadDistanceKm = route.roadDistanceKm;
+              etaMinutes = route.durationMinutes;
+              estimatedArrivalMin = route.durationMinutes;
+              distanceKmField = route.roadDistanceKm;
+              etaFallback = false;
+
+              console.log('[TRACE ROUTE RESULT]', {
+                vehicleNumber: ambulance.vehicleNumber,
+                roadDistanceKm: route.roadDistanceKm,
+                etaMinutes: route.durationMinutes,
+              });
+            } catch (error) {
+              console.warn(`[ROUTING FALLBACK] Google routing failed for ${ambulance.vehicleNumber}:`, error.message);
+              roadDistanceKm = null;
+              etaMinutes = null;
+              estimatedArrivalMin = null;
+              etaFallback = true;
+              distanceKmField = straightDistanceKm;
+            }
+          } else {
+            etaFallback = true;
+          }
+
+          // Fallback ETA using existing smart calculation (only if we have no ETA)
+          if (estimatedArrivalMin === null) {
+            estimatedArrivalMin = calculateSmartETA({
+              distanceMeters: ambulance.distance || 0,
+              currentSpeed: ambulance.currentSpeed,
+              trafficLevel: ambulance.trafficLevel,
+              roadType: ambulance.roadType,
+              signalsCount: ambulance.signalsCount,
+              motionStatus: ambulance.motionStatus,
+            });
+            etaFallback = true;
+          }
+
           const smartRankScore = calculateRankScore({
             smartETA: estimatedArrivalMin,
             ambulanceType: ambulance.type,
@@ -139,20 +233,33 @@ exports.getAmbulances = async (req, res, next) => {
 
           return {
             ...ambulance,
-            distanceKm: Number((ambulance.distance / 1000).toFixed(2)),
+            distanceKm: distanceKmField,
+            roadDistanceKm,
+            etaMinutes,
             estimatedArrivalMin,
+            etaFallback,
             smartRankScore,
           };
         })
-        .sort((first, second) => first.smartRankScore - second.smartRankScore)
-        .map((ambulance, index) => ({ ...ambulance, isFastestArrival: index === 0 }))
-        .slice(skip, skip + requestedLimit);
+      ).then((results) =>
+        results
+          .filter((r) => r.status === 'fulfilled')
+          .map((r) => r.value)
+      );
+
+      // Sort, mark fastest, and paginate
+      const sorted = enriched
+        .sort((a, b) => a.smartRankScore - b.smartRankScore)
+        .map((amb, i) => ({ ...amb, isFastestArrival: i === 0 }));
+
+      ambulances = sorted.slice(skip, skip + requestedLimit);
     } else {
       ambulances = await Ambulance.find(filterQuery)
         .populate('owner', 'name phone')
         .skip(skip)
         .limit(requestedLimit)
-        .sort({ 'rating.average': -1 });
+        .sort({ 'rating.average': -1 })
+        .lean();
     }
 
     const total = await Ambulance.countDocuments(filterQuery);
@@ -165,6 +272,7 @@ exports.getAmbulances = async (req, res, next) => {
       ambulances,
     });
   } catch (error) {
+    console.error('[TRACE API ERROR]', error);
     next(error);
   }
 };
@@ -179,26 +287,69 @@ exports.getAmbulance = async (req, res, next) => {
 
     const pickupLatitude = Number(req.query.lat);
     const pickupLongitude = Number(req.query.lng);
-    const ambulanceCoordinates = ambulance.currentLocation?.coordinates;
+
+    const ambulanceCoordinates = ambulance.baseLocation?.coordinates;
     const hasValidPickup = Number.isFinite(pickupLatitude) && Number.isFinite(pickupLongitude);
     const hasValidAmbulanceLocation = Array.isArray(ambulanceCoordinates)
       && ambulanceCoordinates.length === 2
-      && ambulanceCoordinates.every(Number.isFinite);
+      && ambulanceCoordinates.every(Number.isFinite)
+      && (ambulanceCoordinates[0] !== 0 || ambulanceCoordinates[1] !== 0);
+
+    // Initialise fields for backward compatibility
+    ambulance.distanceKm = null;
+    ambulance.estimatedArrivalMin = null;
+    ambulance.roadDistanceKm = null;
+    ambulance.etaMinutes = null;
+    ambulance.etaFallback = false;
 
     if (hasValidPickup && hasValidAmbulanceLocation) {
-      const distanceKm = calculateDistanceKm(
-        [pickupLongitude, pickupLatitude],
-        ambulanceCoordinates
-      );
-      ambulance.distanceKm = Number(distanceKm.toFixed(2));
-      ambulance.estimatedArrivalMin = calculateSmartETA({
-        distanceMeters: distanceKm * 1000,
-        currentSpeed: ambulance.currentSpeed,
-        trafficLevel: ambulance.trafficLevel,
-        roadType: ambulance.roadType,
-        signalsCount: ambulance.signalsCount,
-        motionStatus: ambulance.motionStatus,
+      // Convert GeoJSON to latitude/longitude for routing
+      const origin = { latitude: Number(ambulanceCoordinates[1]), longitude: Number(ambulanceCoordinates[0]) };
+      const destination = { latitude: pickupLatitude, longitude: pickupLongitude };
+
+      console.log('[TRACE BASE LOCATION]', {
+        vehicleNumber: ambulance.vehicleNumber,
+        coordinates: ambulanceCoordinates,
+        latitude: origin.latitude,
+        longitude: origin.longitude,
       });
+
+      console.log('[TRACE ROUTE INPUT]', {
+        vehicleNumber: ambulance.vehicleNumber,
+        origin,
+        destination,
+      });
+
+      try {
+        const route = await getRoadInfo(origin, destination);
+        ambulance.roadDistanceKm = route.roadDistanceKm;
+        ambulance.etaMinutes = route.durationMinutes;
+        ambulance.estimatedArrivalMin = route.durationMinutes;
+        ambulance.distanceKm = route.roadDistanceKm;
+        ambulance.etaFallback = false;
+
+        console.log('[TRACE ROUTE RESULT]', {
+          vehicleNumber: ambulance.vehicleNumber,
+          roadDistanceKm: route.roadDistanceKm,
+          etaMinutes: route.durationMinutes,
+        });
+      } catch (err) {
+        // Routing failure – fall back to geo‑based ETA
+        ambulance.etaFallback = true;
+        const distanceKm = calculateDistanceKm(
+          [pickupLongitude, pickupLatitude],
+          ambulanceCoordinates
+        );
+        ambulance.distanceKm = Number(distanceKm.toFixed(2));
+        ambulance.estimatedArrivalMin = calculateSmartETA({
+          distanceMeters: distanceKm * 1000,
+          currentSpeed: ambulance.currentSpeed,
+          trafficLevel: ambulance.trafficLevel,
+          roadType: ambulance.roadType,
+          signalsCount: ambulance.signalsCount,
+          motionStatus: ambulance.motionStatus,
+        });
+      }
     }
 
     res.json({ success: true, ambulance });
@@ -274,6 +425,14 @@ exports.updateLocation = async (req, res, next) => {
     if (!latitude || !longitude) {
       return res.status(400).json({ success: false, message: 'latitude and longitude are required.' });
     }
+
+    const existingAmb = await Ambulance.findById(req.params.id).select('vehicleNumber currentLocation');
+    console.log('[TRACE LOCATION UPDATE]', {
+      vehicleNumber: existingAmb ? existingAmb.vehicleNumber : req.params.id,
+      oldCoordinates: existingAmb?.currentLocation?.coordinates,
+      newCoordinates: [parseFloat(longitude), parseFloat(latitude)],
+      source: 'ambulanceController.updateLocation',
+    });
 
     const ambulance = await Ambulance.findByIdAndUpdate(
       req.params.id,

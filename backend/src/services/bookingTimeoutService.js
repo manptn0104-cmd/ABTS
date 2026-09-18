@@ -44,6 +44,7 @@ async function findNextBestAmbulance(booking, previousAmbulanceIds = []) {
       {
         $geoNear: {
           near: { type: 'Point', coordinates: [pickupLng, pickupLat] },
+          key: 'currentLocation',
           distanceField: 'distance',
           maxDistance: 30000, // 30km search radius
           query: {
@@ -347,7 +348,29 @@ async function checkAndReassignBooking(booking) {
     if (elapsedSec < timeoutSec) {
       return null; // Not yet timed out
     }
+    // Atomically claim the booking before starting reassignment.
+    // Prevents timeout scheduler and driver rejection from
+    // processing the same booking at the same time.
+    const claim = await Booking.findOneAndUpdate(
+      {
+        _id: booking._id,
+        status: 'pending',
+        reassigning: { $ne: true },
+      },
+      {
+        $set: { reassigning: true },
+      },
+      {
+        new: true,
+      }
+    );
 
+    if (!claim) {
+      console.log(
+        `[BookingTimeout] Booking ${booking._id} is already being reassigned. Skipping.`
+      );
+      return 'already_reassigning';
+    }
     console.log(
       `[BookingTimeout] ⏱ TIMEOUT TRIGGERED for booking ${booking._id} (${elapsedSec.toFixed(0)}s > ${timeoutSec}s). Attempting reassignment #${booking.reassignmentCount + 1
       }`
@@ -379,10 +402,41 @@ async function checkAndReassignBooking(booking) {
     }
 
     // Perform reassignment
-    await reassignBooking(booking, nextAmbulance, currentAmbulanceId);
+    // Perform reassignment
+    const reassigned = await reassignBooking(
+      booking,
+      nextAmbulance,
+      currentAmbulanceId
+    );
+
+    // Always release the claim after reassignment attempt.
+    await Booking.findByIdAndUpdate(
+      booking._id,
+      { $unset: { reassigning: '' } }
+    );
+
+    if (!reassigned) {
+      return 'error';
+    }
+
     return 'reassigned';
   } catch (error) {
-    console.error(`[BookingTimeout] ❌ Error checking booking ${booking._id}:`, error.message);
+    console.error(
+      `[BookingTimeout] ❌ Error checking booking ${booking._id}:`,
+      error.message
+    );
+
+    // Release claim if this booking was being processed.
+    await Booking.findByIdAndUpdate(
+      booking._id,
+      { $unset: { reassigning: '' } }
+    ).catch((cleanupError) => {
+      console.error(
+        `[BookingTimeout] Failed to clear reassignment claim for ${booking._id}:`,
+        cleanupError.message
+      );
+    });
+
     return 'error';
   }
 }

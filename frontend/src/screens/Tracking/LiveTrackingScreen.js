@@ -9,7 +9,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { fetchBookingById, cancelBooking, updateCurrentStatus } from '../../store/bookingSlice';
 import { useSocket } from '../../hooks/useSocket';
 import MapComponent from '../../components/MapComponent';
-import Card  from '../../components/common/Card';
+import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { Colors, Spacing, BorderRadius, Shadow } from '../../theme';
@@ -21,14 +21,14 @@ const POLL_INTERVAL = 15000; // 15 seconds for pending bookings
 
 export default function LiveTrackingScreen({ route, navigation }) {
   const { bookingId } = route.params;
-  const dispatch  = useDispatch();
+  const dispatch = useDispatch();
   const { connect, on, off, emit } = useSocket();
   const { current: booking, isLoading } = useSelector((s) => s.booking);
   const { user } = useSelector((s) => s.auth);
 
   const [ambulanceLoc, setAmbulanceLoc] = useState(null);
-  const [mapRegion, setMapRegion]       = useState(null);
-  const [eta, setEta]                   = useState(null);
+  const [mapRegion, setMapRegion] = useState(null);
+  const [eta, setEta] = useState(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pollIntervalRef = useRef(null);
 
@@ -44,7 +44,7 @@ export default function LiveTrackingScreen({ route, navigation }) {
       console.log('[LiveTracking] Starting poll for pending booking');
       // Clear existing poll
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-      
+
       // Poll every 15 seconds
       pollIntervalRef.current = setInterval(() => {
         console.log('[LiveTracking] Polling booking for updates...');
@@ -83,7 +83,7 @@ export default function LiveTrackingScreen({ route, navigation }) {
       const anim = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, { toValue: 1.3, duration: 800, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1,   duration: 800, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
         ])
       );
       anim.start();
@@ -107,31 +107,79 @@ export default function LiveTrackingScreen({ route, navigation }) {
     };
 
     const handleStatusUpdate = (data) => {
-      dispatch(updateCurrentStatus(data.status));
+      console.log('[LiveTracking] booking_status_update:', data);
+
+      // Completed is a final state.
       if (data.status === 'completed') {
+        dispatch(updateCurrentStatus(data.status));
+
         Alert.alert('Trip Completed', 'Your ambulance has arrived. Thank you!', [
-          { text: 'Rate Trip', onPress: () => navigation.replace('Feedback', { bookingId }) },
-          { text: 'Close',     onPress: () => navigation.navigate('MainTabs') },
+          {
+            text: 'Rate Trip',
+            onPress: () => navigation.replace('Feedback', { bookingId }),
+          },
+          {
+            text: 'Close',
+            onPress: () => navigation.navigate('MainTabs'),
+          },
         ]);
+
+        return;
       }
+
+      // Driver rejection is handled by the backend reassignment flow.
+      // Do NOT treat it as a final booking failure.
       if (data.status === 'rejected') {
-        Alert.alert('Booking Rejected', data.booking?.rejectionReason || 'Driver rejected the booking.', [
-          { text: 'Find Another', onPress: () => navigation.goBack() },
-        ]);
+        console.log(
+          '[LiveTracking] Driver rejected current assignment. Waiting for reassignment...'
+        );
+
+        return;
       }
+
+      // Normal status updates.
+      dispatch(updateCurrentStatus(data.status));
     };
 
     // NEW: Handle booking reassignment
-    const handleBookingReassigned = (data) => {
+    const handleBookingReassigned = async (data) => {
       console.log('[LiveTracking] ✓ booking_reassigned event received:', data);
-      // Refetch the booking to get updated ambulance/driver info
-      dispatch(fetchBookingById(bookingId)).then(() => {
+
+      try {
+        await dispatch(fetchBookingById(bookingId));
+
+        console.log(
+          `[LiveTracking] ✓ Booking updated with new ambulance: ${data.vehicleNumber}`
+        );
+
         Alert.alert(
-          'Booking Reassigned',
+          'Driver Reassigned',
           `Your booking has been reassigned to ${data.vehicleNumber}. Your new driver is ${data.driverName}.`,
           [{ text: 'OK' }]
         );
-      });
+      } catch (error) {
+        console.error(
+          '[LiveTracking] Failed to refresh booking after reassignment:',
+          error
+        );
+      }
+    };
+    const handleBookingUnavailable = (data) => {
+      console.log('[LiveTracking] FINAL booking_unavailable event received:', data);
+
+      dispatch(updateCurrentStatus('unavailable'));
+
+      Alert.alert(
+        'No Ambulance Available',
+        data.message ||
+        'Unfortunately, no ambulances are available in your area. Please try again later.',
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.navigate('MainTabs'),
+          },
+        ]
+      );
     };
 
     const setup = async () => {
@@ -142,6 +190,7 @@ export default function LiveTrackingScreen({ route, navigation }) {
       socket.on('ambulance_location', handleAmbulanceLoc);
       socket.on('booking_status_update', handleStatusUpdate);
       socket.on('booking_reassigned', handleBookingReassigned); // NEW
+      socket.on('booking_unavailable', handleBookingUnavailable);
     };
 
     setup();
@@ -152,6 +201,7 @@ export default function LiveTrackingScreen({ route, navigation }) {
         socket.off('ambulance_location', handleAmbulanceLoc);
         socket.off('booking_status_update', handleStatusUpdate);
         socket.off('booking_reassigned', handleBookingReassigned); // NEW
+        socket.off('booking_unavailable', handleBookingUnavailable);
       }
     };
   }, [bookingId, dispatch]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -306,9 +356,9 @@ export default function LiveTrackingScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe:         { flex: 1, backgroundColor: Colors.background },
+  safe: { flex: 1, backgroundColor: Colors.background },
   mapContainer: { flex: 1, position: 'relative' },
-  map:          { flex: 1 },
+  map: { flex: 1 },
   statusPill: {
     position: 'absolute', top: Spacing.md, alignSelf: 'center',
     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -316,7 +366,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
     ...Shadow.medium,
   },
-  statusDot:  { width: 10, height: 10, borderRadius: 5 },
+  statusDot: { width: 10, height: 10, borderRadius: 5 },
   statusText: { fontSize: 14, fontWeight: '700' },
   sheet: {
     backgroundColor: Colors.surface,
@@ -326,11 +376,11 @@ const styles = StyleSheet.create({
     maxHeight: '55%',
   },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.md },
-  sheetTitle:  { fontSize: 16, fontWeight: '700', color: Colors.text },
-  sheetTime:   { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
-  etaBox:      { alignItems: 'center', backgroundColor: Colors.background, borderRadius: BorderRadius.md, padding: Spacing.sm },
-  etaText:     { fontSize: 18, fontWeight: '800', color: Colors.secondary },
-  etaLabel:    { fontSize: 11, color: Colors.textSecondary },
+  sheetTitle: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  sheetTime: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
+  etaBox: { alignItems: 'center', backgroundColor: Colors.background, borderRadius: BorderRadius.md, padding: Spacing.sm },
+  etaText: { fontSize: 18, fontWeight: '800', color: Colors.secondary },
+  etaLabel: { fontSize: 11, color: Colors.textSecondary },
   driverCard: {
     marginBottom: Spacing.md,
     borderRadius: BorderRadius.lg,
@@ -346,18 +396,18 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     justifyContent: 'center', alignItems: 'center',
   },
-  driverInfo:  { flex: 1 },
-  driverName:  { fontSize: 15, fontWeight: '700', color: Colors.text },
-  vehicleNum:  { fontSize: 13, color: Colors.textSecondary },
+  driverInfo: { flex: 1 },
+  driverName: { fontSize: 15, fontWeight: '700', color: Colors.text },
+  vehicleNum: { fontSize: 13, color: Colors.textSecondary },
   callBtn: {
     width: 42, height: 42, borderRadius: 21,
     backgroundColor: Colors.success,
     justifyContent: 'center', alignItems: 'center',
   },
   locationRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: Spacing.md },
-  locationText:{ flex: 1, fontSize: 13, color: Colors.textSecondary },
-  timeline:    { flexDirection: 'row', alignItems: 'flex-start', marginBottom: Spacing.md },
-  timelineItem:{ flex: 1, alignItems: 'center' },
+  locationText: { flex: 1, fontSize: 13, color: Colors.textSecondary },
+  timeline: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: Spacing.md },
+  timelineItem: { flex: 1, alignItems: 'center' },
   timelineDot: {
     width: 20, height: 20, borderRadius: 10,
     backgroundColor: Colors.border,
@@ -366,7 +416,7 @@ const styles = StyleSheet.create({
   },
   timelineLine: { position: 'absolute', top: 9, left: '50%', width: '100%', height: 2, backgroundColor: Colors.border },
   timelineLineDone: { backgroundColor: Colors.success },
-  timelineLabel:     { fontSize: 10, color: Colors.textMuted, textAlign: 'center' },
+  timelineLabel: { fontSize: 10, color: Colors.textMuted, textAlign: 'center' },
   timelineLabelDone: { color: Colors.success, fontWeight: '600' },
   cancelBtn: { marginTop: Spacing.sm },
   feedbackButton: {

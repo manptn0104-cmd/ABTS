@@ -48,6 +48,7 @@ const ambulanceSlice = createSlice({
     isLoading:        false,
     isLoadingDetails: false,
     error:            null,
+    currentRequestId: null,
     filters:          defaultFilters,
   },
   reducers: {
@@ -58,13 +59,35 @@ const ambulanceSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchAmbulances.pending,   (s) => { s.isLoading = true; s.error = null; })
-      .addCase(fetchAmbulances.fulfilled, (s, a) => {
-        s.isLoading = false;
-        s.list  = a.payload.ambulances;
-        s.total = a.payload.total;
+      .addCase(fetchAmbulances.pending, (s, action) => {
+        s.isLoading = true;
+        s.error = null;
+        s.currentRequestId = action.meta.requestId;
       })
-      .addCase(fetchAmbulances.rejected,  (s, a) => { s.isLoading = false; s.error = a.payload; });
+      .addCase(fetchAmbulances.fulfilled, (s, action) => {
+        // Only accept if this is the latest request
+        if (action.meta.requestId === s.currentRequestId) {
+          s.isLoading = false;
+          s.list = action.payload.ambulances;
+          action.payload.ambulances?.forEach((amb) => {
+            console.log('[TRACE REDUX]', {
+              vehicleNumber: amb.vehicleNumber,
+              roadDistanceKm: amb.roadDistanceKm,
+              etaMinutes: amb.etaMinutes,
+              estimatedArrivalMin: amb.estimatedArrivalMin,
+              etaFallback: amb.etaFallback,
+            });
+          });
+          s.total = action.payload.total;
+        }
+      })
+      .addCase(fetchAmbulances.rejected, (s, action) => {
+        // Only clear loading/error if this is the latest request
+        if (action.meta.requestId === s.currentRequestId) {
+          s.isLoading = false;
+          s.error = action.payload;
+        }
+      })
 
     builder
       .addCase(fetchAmbulanceById.pending,   (s) => { s.isLoadingDetails = true; })

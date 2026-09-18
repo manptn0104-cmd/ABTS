@@ -3,8 +3,16 @@ const jwt = require('jsonwebtoken');
 const Ambulance = require('../models/Ambulance');
 const Location = require('../models/Location');
 const Booking = require('../models/Booking');
+// Routing service & ETA utilities
+const { getRoadInfo, RoutingError } = require('../services/routingService');
+const { calculateSmartETA } = require('../utils/etaPredictor');
 
 let io;
+
+// In‑memory throttle map for routing requests per ambulance
+const routeThrottleMap = new Map(); // ambulanceId -> { lastRouteTimestamp, lastRoutedLocation, routingInProgress }
+const MIN_ROUTE_INTERVAL_MS = 30 * 1000; // 30 seconds
+const MOVEMENT_THRESHOLD_M = 200; // 200 metres
 
 const initializeSocket = (server) => {
   io = new Server(server, {
@@ -68,6 +76,21 @@ const initializeSocket = (server) => {
       const lat = parseFloat(latitude);
       const lng = parseFloat(longitude);
 
+      // Helper to compute haversine distance (m)
+      const haversineMeters = (a, b) => {
+        const R = 6371000;
+        const toRad = (deg) => (deg * Math.PI) / 180;
+        const dLat = toRad(b.latitude - a.latitude);
+        const dLng = toRad(b.longitude - a.longitude);
+        const lat1 = toRad(a.latitude);
+        const lat2 = toRad(b.latitude);
+        const sinDLat = Math.sin(dLat / 2);
+        const sinDLng = Math.sin(dLng / 2);
+        const h = sinDLat * sinDLat + sinDLng * sinDLng * Math.cos(lat1) * Math.cos(lat2);
+        const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+        return R * c;
+      };
+
       try {
         // Persist to DB
         await Location.create({
@@ -81,18 +104,74 @@ const initializeSocket = (server) => {
         });
 
         // Update ambulance current position
+        const targetAmb = await Ambulance.findById(ambulanceId).select('vehicleNumber currentLocation');
+        console.log('[TRACE LOCATION UPDATE]', {
+          vehicleNumber: targetAmb ? targetAmb.vehicleNumber : ambulanceId,
+          oldCoordinates: targetAmb?.currentLocation?.coordinates,
+          newCoordinates: [lng, lat],
+          source: 'socketService.driver_location_update',
+        });
+
         await Ambulance.findByIdAndUpdate(ambulanceId, {
           currentLocation: { type: 'Point', coordinates: [lng, lat] },
         });
 
         const payload = { ambulanceId, latitude: lat, longitude: lng, speed, heading, timestamp: new Date() };
 
-        // Push to tracking booking room
+        // Enrich payload with road distance & ETA when a booking is active
+        if (bookingId) {
+          const booking = await Booking.findById(bookingId).select('pickupLocation');
+          if (booking && booking.pickupLocation && Array.isArray(booking.pickupLocation.coordinates)) {
+            const origin = { latitude: lat, longitude: lng };
+            const [destLng, destLat] = booking.pickupLocation.coordinates;
+            const destination = { latitude: destLat, longitude: destLng };
+
+            const now = Date.now();
+            const entry = routeThrottleMap.get(ambulanceId) || {};
+            const elapsed = now - (entry.lastRouteTimestamp || 0);
+            const moved = entry.lastRoutedLocation ? haversineMeters(entry.lastRoutedLocation, origin) : Infinity;
+            const shouldRoute = !entry.lastRouteTimestamp || (elapsed >= MIN_ROUTE_INTERVAL_MS && moved >= MOVEMENT_THRESHOLD_M && !entry.routingInProgress);
+
+            if (shouldRoute) {
+              entry.routingInProgress = true;
+              routeThrottleMap.set(ambulanceId, entry);
+              try {
+                const route = await getRoadInfo(origin, destination);
+                payload.roadDistanceKm = route.roadDistanceKm;
+                payload.etaMinutes = route.durationMinutes;
+                payload.etaFallback = false;
+                entry.lastRouteTimestamp = Date.now();
+                entry.lastRoutedLocation = origin;
+              } catch (err) {
+                const straightDistMeters = haversineMeters(origin, destination);
+                const fallbackEta = calculateSmartETA({
+                  distanceMeters: straightDistMeters,
+                  currentSpeed: speed,
+                  trafficLevel: 'clear',
+                  roadType: 'main_road',
+                  signalsCount: 0,
+                  motionStatus: speed === 0 ? 'waiting' : 'moving',
+                });
+                payload.roadDistanceKm = null;
+                payload.etaMinutes = fallbackEta;
+                payload.etaFallback = true;
+                entry.lastRouteTimestamp = Date.now();
+                entry.lastRoutedLocation = origin;
+                console.warn(`[ROUTE] Ambulance ${ambulanceId} routing failed – using fallback ETA`);
+              } finally {
+                entry.routingInProgress = false;
+                routeThrottleMap.set(ambulanceId, entry);
+              }
+            }
+          }
+        }
+
+        // Emit to booking room (if any)
         if (bookingId) {
           socket.to(`booking_${bookingId}`).emit('ambulance_location', payload);
         }
 
-        // Push to general ambulance watchers
+        // Emit to generic watchers
         socket.to(`watch_ambulance_${ambulanceId}`).emit('ambulance_location', payload);
       } catch (err) {
         console.error('Socket location save error:', err.message);
@@ -128,18 +207,18 @@ const initializeSocket = (server) => {
         const roadTypes = ['highway', 'main_road', 'local_street'];
 
         for (const amb of availableAmbulances) {
-          if (!amb.currentLocation || !amb.currentLocation.coordinates) continue;
-          let [lng, lat] = amb.currentLocation.coordinates;
-          if (!lng || !lat || (lng === 0 && lat === 0)) {
-            lng = 77.5946;
-            lat = 12.9716;
-          }
+          const baseCoords = (amb.baseLocation?.coordinates?.length === 2 && (amb.baseLocation.coordinates[0] !== 0 || amb.baseLocation.coordinates[1] !== 0))
+            ? amb.baseLocation.coordinates
+            : amb.currentLocation?.coordinates;
 
-          // Move coordinates slightly (approx 30-100 meters per step)
-          const dLng = (Math.random() - 0.5) * 0.0008;
-          const dLat = (Math.random() - 0.5) * 0.0008;
-          const newLng = lng + dLng;
-          const newLat = lat + dLat;
+          if (!baseCoords || !baseCoords[0] || !baseCoords[1]) continue;
+          const [baseLng, baseLat] = baseCoords;
+
+          // Bounded small movement around stable base location (max ~30-50m offset)
+          const dLng = (Math.random() - 0.5) * 0.0004;
+          const dLat = (Math.random() - 0.5) * 0.0004;
+          const newLng = baseLng + dLng;
+          const newLat = baseLat + dLat;
 
           const currentSpeed = speeds[Math.floor(Math.random() * speeds.length)];
           const motionStatus = currentSpeed === 0 ? 'waiting' : (currentSpeed < 25 ? 'stuck' : 'moving');
@@ -148,6 +227,13 @@ const initializeSocket = (server) => {
           const signalsCount = Math.floor(Math.random() * 4);
 
           // Update MongoDB
+          console.log('[TRACE LOCATION UPDATE]', {
+            vehicleNumber: amb.vehicleNumber,
+            oldCoordinates: amb.currentLocation?.coordinates,
+            newCoordinates: [newLng, newLat],
+            source: 'socketService.startSimulator.availableAmbulances',
+          });
+
           amb.currentLocation.coordinates = [newLng, newLat];
           amb.set('currentSpeed', currentSpeed, { strict: false });
           amb.set('motionStatus', motionStatus, { strict: false });
@@ -195,6 +281,12 @@ const initializeSocket = (server) => {
 
           // Stop movement simulation if ambulance is very close to pickup (< 50 meters)
           if (currentDistanceMeters < 50) {
+            console.log('[TRACE LOCATION UPDATE]', {
+              vehicleNumber: amb.vehicleNumber,
+              oldCoordinates: amb.currentLocation?.coordinates,
+              newCoordinates: [pickupLng, pickupLat],
+              source: 'socketService.startSimulator.activeBooking.atLocation',
+            });
             // Keep ambulance at pickup location
             amb.currentLocation.coordinates = [pickupLng, pickupLat];
             amb.set('motionStatus', 'at_location', { strict: false });
@@ -226,6 +318,13 @@ const initializeSocket = (server) => {
           const trafficLevel = Math.random() > 0.65 ? 'moderate' : 'clear';
           const motionStatus = 'moving';
           const signalsCount = 1;
+
+          console.log('[TRACE LOCATION UPDATE]', {
+            vehicleNumber: amb.vehicleNumber,
+            oldCoordinates: amb.currentLocation?.coordinates,
+            newCoordinates: [newLng, newLat],
+            source: 'socketService.startSimulator.activeBooking.moving',
+          });
 
           amb.currentLocation.coordinates = [newLng, newLat];
           amb.set('currentSpeed', currentSpeed, { strict: false });
