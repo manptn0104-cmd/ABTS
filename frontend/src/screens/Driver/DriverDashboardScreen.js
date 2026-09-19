@@ -12,21 +12,21 @@ import { fetchAmbulanceBookings, updateBookingStatus } from '../../api/bookings'
 import { useSocket } from '../../hooks/useSocket';
 
 const STATUS_COLOR = {
-  pending:     Colors.statusPending,
-  confirmed:   Colors.statusConfirmed,
+  pending: Colors.statusPending,
+  confirmed: Colors.statusConfirmed,
   in_progress: Colors.statusInProgress,
-  completed:   Colors.statusCompleted,
-  cancelled:   Colors.statusCancelled,
-  rejected:    Colors.statusRejected,
+  completed: Colors.statusCompleted,
+  cancelled: Colors.statusCancelled,
+  rejected: Colors.statusRejected,
 };
 
 const STATUS_LABEL = {
-  pending:     'Pending',
-  confirmed:   'Confirmed',
+  pending: 'Pending',
+  confirmed: 'Confirmed',
   in_progress: 'In Progress',
-  completed:   'Completed',
-  cancelled:   'Cancelled',
-  rejected:    'Rejected',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+  rejected: 'Rejected',
 };
 
 export default function DriverDashboardScreen() {
@@ -34,11 +34,11 @@ export default function DriverDashboardScreen() {
   const { connect, socket } = useSocket();
   const navigation = useNavigation();
 
-  const [ambulance,  setAmbulance]  = useState(null);
-  const [bookings,   setBookings]   = useState([]);
-  const [loading,    setLoading]    = useState(true);
+  const [ambulance, setAmbulance] = useState(null);
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [actioningId, setActioningId] = useState(null);
-  const [tab,        setTab]        = useState('pending'); // 'pending' | 'active' | 'history'
+  const [tab, setTab] = useState('pending'); // 'pending' | 'active' | 'history'
 
   const socketRef = useRef(null);
 
@@ -46,12 +46,12 @@ export default function DriverDashboardScreen() {
   const loadData = useCallback(async () => {
     try {
       const ambRes = await fetchMyAmbulance();
-      const amb    = ambRes.data.ambulance;
+      const amb = ambRes.data.ambulance;
       setAmbulance(amb);
 
-      const statuses = tab === 'pending'  ? 'pending'
-                     : tab === 'active'   ? 'confirmed,in_progress'
-                     : 'completed,cancelled,rejected';
+      const statuses = tab === 'pending' ? 'pending'
+        : tab === 'active' ? 'confirmed,in_progress'
+          : 'completed,cancelled,rejected';
 
       const bRes = await fetchAmbulanceBookings(amb._id, { status: statuses });
       setBookings(bRes.data.bookings || []);
@@ -240,7 +240,7 @@ export default function DriverDashboardScreen() {
 
       {/* Current Location */}
       <View>
-        <Text style={styles.label}>Current Location</Text>
+        <Text style={styles.label}>Pickup Location</Text>
         <Text style={styles.infoText}>
           {(() => {
             console.log('ACTIVE BOOKING:', JSON.stringify(item, null, 2));
@@ -259,8 +259,8 @@ export default function DriverDashboardScreen() {
         <Text style={styles.label}>Patient Contact</Text>
         <Text style={styles.infoText}>
           {item?.user?.phone ||
-           item?.patientPhone ||
-           'No contact available'}
+            item?.patientPhone ||
+            'No contact available'}
         </Text>
       </View>
 
@@ -300,8 +300,8 @@ export default function DriverDashboardScreen() {
 
   const TAB_ITEMS = [
     { key: 'pending', label: 'Requests', icon: 'bell-ring' },
-    { key: 'active',  label: 'Active',   icon: 'car-emergency' },
-    { key: 'history', label: 'History',  icon: 'history' },
+    { key: 'active', label: 'Active', icon: 'car-emergency' },
+    { key: 'history', label: 'History', icon: 'history' },
   ];
 
   return (
@@ -384,8 +384,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between', alignItems: 'center',
   },
   headerTitle: { fontSize: 18, fontWeight: '800', color: Colors.white },
-  headerSub:   { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
-  onlineDot:   { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: Colors.white },
+  headerSub: { fontSize: 13, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
+  onlineDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: Colors.white },
 
   ambCard: {
     flexDirection: 'row', alignItems: 'center',
@@ -394,22 +394,22 @@ const styles = StyleSheet.create({
     padding: Spacing.md, ...Shadow.light,
   },
   ambVehicle: { fontSize: 15, fontWeight: '700', color: Colors.text },
-  ambType:    { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
-  availDot:   { borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  availText:  { fontSize: 11, fontWeight: '700', color: Colors.white },
+  ambType: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
+  availDot: { borderRadius: BorderRadius.full, paddingHorizontal: 10, paddingVertical: 4 },
+  availText: { fontSize: 11, fontWeight: '700', color: Colors.white },
 
   tabBar: {
     flexDirection: 'row', backgroundColor: Colors.white,
     marginHorizontal: Spacing.md, marginTop: Spacing.sm,
     borderRadius: BorderRadius.lg, overflow: 'hidden', ...Shadow.light,
   },
-  tab:         { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.sm, gap: 4 },
-  tabActive:   { borderBottomWidth: 3, borderBottomColor: Colors.secondary },
-  tabText:     { fontSize: 12, fontWeight: '600', color: Colors.textMuted },
-  tabTextActive:{ color: Colors.secondary },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: Spacing.sm, gap: 4 },
+  tabActive: { borderBottomWidth: 3, borderBottomColor: Colors.secondary },
+  tabText: { fontSize: 12, fontWeight: '600', color: Colors.textMuted },
+  tabTextActive: { color: Colors.secondary },
 
-  list:  { padding: Spacing.md, gap: Spacing.sm },
-  center:{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl },
+  list: { padding: Spacing.md, gap: Spacing.sm },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.xl },
   emptyText: { marginTop: Spacing.md, fontSize: 14, color: Colors.textMuted, textAlign: 'center' },
 
   card: {
@@ -423,16 +423,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 3,
   },
   emergencyText: { fontSize: 10, fontWeight: '700', color: Colors.white },
-  statusBadge:  {
+  statusBadge: {
     borderRadius: BorderRadius.full, borderWidth: 1,
     paddingHorizontal: 10, paddingVertical: 3,
   },
-  statusText:   { fontSize: 11, fontWeight: '700' },
+  statusText: { fontSize: 11, fontWeight: '700' },
 
-  infoRow:  { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  infoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   infoText: { flex: 1, fontSize: 13, color: Colors.text },
-  infoLabel:{ fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
-  label:    { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, marginBottom: 4 },
+  infoLabel: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
+  label: { fontSize: 13, fontWeight: '600', color: Colors.textSecondary, marginBottom: 4 },
 
   bloodBadge: {
     backgroundColor: '#FFEBEE', borderRadius: BorderRadius.full,
@@ -445,19 +445,19 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#FFCDD2', padding: Spacing.sm, gap: 4,
   },
 
-  fareRow:  { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: Colors.divider, paddingTop: Spacing.sm },
-  fareLabel:{ fontSize: 13, color: Colors.textSecondary },
-  fareValue:{ fontSize: 15, fontWeight: '800', color: Colors.secondary },
+  fareRow: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: Colors.divider, paddingTop: Spacing.sm },
+  fareLabel: { fontSize: 13, color: Colors.textSecondary },
+  fareValue: { fontSize: 15, fontWeight: '800', color: Colors.secondary },
 
   actionRow: { flexDirection: 'row', gap: 10 },
   actionBtn: {
     flex: 1, alignItems: 'center', justifyContent: 'center',
     borderRadius: BorderRadius.md, paddingVertical: 10,
   },
-  acceptBtn:   { backgroundColor: Colors.success },
-  rejectBtn:   { backgroundColor: Colors.statusRejected },
-  startBtn:    { backgroundColor: Colors.secondary, flex: 0, paddingHorizontal: Spacing.lg },
-  completeBtn: { backgroundColor: Colors.accent,    flex: 0, paddingHorizontal: Spacing.lg },
+  acceptBtn: { backgroundColor: Colors.success },
+  rejectBtn: { backgroundColor: Colors.statusRejected },
+  startBtn: { backgroundColor: Colors.secondary, flex: 0, paddingHorizontal: Spacing.lg },
+  completeBtn: { backgroundColor: Colors.accent, flex: 0, paddingHorizontal: Spacing.lg },
   actionBtnText: { fontSize: 14, fontWeight: '700', color: Colors.white },
 
   navigateBtn: {
