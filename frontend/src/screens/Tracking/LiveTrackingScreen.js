@@ -37,6 +37,15 @@ export default function LiveTrackingScreen({ route, navigation }) {
     dispatch(fetchBookingById(bookingId));
   }, [bookingId, dispatch]);
 
+  useEffect(() => {
+  if (
+    booking?.estimatedTime !== undefined &&
+    booking?.estimatedTime !== null
+  ) {
+    setEta(booking.estimatedTime);
+  }
+}, [booking?.estimatedTime]);
+
   // Polling for pending bookings (fallback if socket fails)
   // This ensures we catch reassignments even if socket event is missed
   useEffect(() => {
@@ -95,16 +104,34 @@ export default function LiveTrackingScreen({ route, navigation }) {
   useEffect(() => {
     let socket;
 
-    const handleAmbulanceLoc = (data) => {
-      const loc = { latitude: data.latitude, longitude: data.longitude };
-      setAmbulanceLoc(loc);
-      setEta(data.eta || null);
-      setMapRegion((r) =>
-        r
-          ? { ...r, latitude: (r.latitude + loc.latitude) / 2, longitude: (r.longitude + loc.longitude) / 2 }
-          : { ...loc, latitudeDelta: 0.02, longitudeDelta: 0.02 }
-      );
-    };
+     const handleAmbulanceLoc = (data) => {
+  const loc = {
+    latitude: data.latitude,
+    longitude: data.longitude,
+  };
+
+  // Update ambulance position and live ETA from backend.
+  setAmbulanceLoc(loc);
+
+   // Update ETA from the backend's LIVE Google Routes result.
+  if (data.eta !== undefined && data.eta !== null) {
+    setEta(Number(data.eta));
+  }
+
+  setMapRegion((r) =>
+    r
+      ? {
+          ...r,
+          latitude: (r.latitude + loc.latitude) / 2,
+          longitude: (r.longitude + loc.longitude) / 2,
+        }
+      : {
+          ...loc,
+          latitudeDelta: 0.02,
+          longitudeDelta: 0.02,
+        }
+  );
+};
 
     const handleStatusUpdate = (data) => {
       console.log('[LiveTracking] booking_status_update:', data);

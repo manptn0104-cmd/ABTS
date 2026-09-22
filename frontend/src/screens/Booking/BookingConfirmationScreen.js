@@ -326,7 +326,11 @@ export default function BookingConfirmationScreen({ route, navigation }) {
         },
       },
       estimatedDistance: distanceKm,
-      paymentMethod,
+      estimatedTime:
+  ambulance.etaMinutes ??
+  ambulance.estimatedArrivalMin ??
+  Math.round(distanceKm * 1.5),
+     paymentMethod,
       requiredFacilities: selectedFacilities && Array.isArray(selectedFacilities) ? selectedFacilities : [],
       patientConsent: {
         accepted: consentAccepted,

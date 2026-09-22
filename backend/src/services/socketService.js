@@ -13,6 +13,11 @@ let io;
 const routeThrottleMap = new Map(); // ambulanceId -> { lastRouteTimestamp, lastRoutedLocation, routingInProgress }
 const MIN_ROUTE_INTERVAL_MS = 30 * 1000; // 30 seconds
 const MOVEMENT_THRESHOLD_M = 200; // 200 metres
+// Separate route cache for simulated active-booking tracking.
+// The simulator moves every 4 seconds, but Google Routes is
+// recalculated at most once every 30 seconds.
+const simulatorRouteMap = new Map();
+const SIMULATOR_ROUTE_INTERVAL_MS = 30 * 1000;
 
 const initializeSocket = (server) => {
   io = new Server(server, {
@@ -258,7 +263,6 @@ const initializeSocket = (server) => {
 
           io.to(`watch_ambulance_${amb._id}`).emit('ambulance_location', payload);
         }
-
         // ── Simulate Active Booking Drivers ────────────────────────────────────
         const activeBookings = await Booking.find({ status: { $in: ['confirmed', 'in_progress'] } }).populate('ambulance');
 
@@ -291,6 +295,8 @@ const initializeSocket = (server) => {
             amb.currentLocation.coordinates = [pickupLng, pickupLat];
             amb.set('motionStatus', 'at_location', { strict: false });
             await amb.save();
+
+            simulatorRouteMap.delete(booking._id.toString());
 
             const payload = {
               ambulanceId: amb._id,
@@ -333,40 +339,85 @@ const initializeSocket = (server) => {
           amb.set('signalsCount', signalsCount, { strict: false });
           await amb.save();
 
-          // Calculate distance in meters (Haversine formula)
-          const dLat = (pickupLat - newLat) * Math.PI / 180;
-          const dLon = (pickupLng - newLng) * Math.PI / 180;
-          const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                    Math.cos(newLat * Math.PI / 180) * Math.cos(pickupLat * Math.PI / 180) *
-                    Math.sin(dLon/2) * Math.sin(dLon/2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-          const distanceMeters = 6371000 * c;
+          // Calculate LIVE road distance + traffic-aware ETA.
+// The ambulance position changes every 4 seconds,
+// but Google Routes is queried at most once every 30 seconds.
+let liveEta = null;
+let liveRoadDistanceKm = null;
 
-          const smartETA = calculateSmartETA({
-            distanceMeters,
-            currentSpeed,
-            trafficLevel,
-            roadType: 'main_road',
-            signalsCount,
-            motionStatus,
-          });
+const bookingKey = booking._id.toString();
+const now = Date.now();
+const cachedRoute = simulatorRouteMap.get(bookingKey);
 
-          const payload = {
-            ambulanceId: amb._id,
-            bookingId: booking._id,
-            latitude: newLat,
-            longitude: newLng,
-            speed: currentSpeed,
-            motionStatus,
-            trafficLevel,
-            eta: smartETA,
-            timestamp: new Date(),
-          };
+const shouldRefreshRoute =
+  !cachedRoute ||
+  now - cachedRoute.timestamp >= SIMULATOR_ROUTE_INTERVAL_MS;
 
-          io.to(`booking_${booking._id}`).emit('ambulance_location', payload);
-          console.log(`[Simulator Active Booking] Booking ${booking._id?.toString().slice(-6)}: Dist: ${(distanceMeters/1000).toFixed(2)}km, Smart ETA = ${smartETA} mins`);
+if (shouldRefreshRoute) {
+  try {
+    const route = await getRoadInfo(
+      {
+        latitude: newLat,
+        longitude: newLng,
+      },
+      {
+        latitude: pickupLat,
+        longitude: pickupLng,
+      }
+    );
+
+    liveEta = route.durationMinutes;
+    liveRoadDistanceKm = route.roadDistanceKm;
+
+    simulatorRouteMap.set(bookingKey, {
+      timestamp: now,
+      eta: liveEta,
+      roadDistanceKm: liveRoadDistanceKm,
+    });
+
+    console.log(
+      `[Simulator Routes] Booking ${bookingKey.slice(-6)}: ` +
+      `Road Distance = ${liveRoadDistanceKm} km, ` +
+      `Traffic ETA = ${liveEta} min`
+    );
+  } catch (err) {
+    console.warn(
+      `[Simulator Routes] Google Routes failed for booking ${bookingKey.slice(-6)}:`,
+      err.message
+    );
+
+    // Keep the last successful real Google Routes value.
+    if (cachedRoute) {
+      liveEta = cachedRoute.eta;
+      liveRoadDistanceKm = cachedRoute.roadDistanceKm;
+    }
+  }
+} else {
+  // Reuse the most recent real Google Routes result
+  // between routing requests.
+  liveEta = cachedRoute.eta;
+  liveRoadDistanceKm = cachedRoute.roadDistanceKm;
+}
+
+const payload = {
+  ambulanceId: amb._id,
+  bookingId: booking._id,
+  latitude: newLat,
+  longitude: newLng,
+  speed: currentSpeed,
+  motionStatus,
+  trafficLevel,
+  roadDistanceKm: liveRoadDistanceKm,
+  eta: liveEta,
+  etaFallback: false,
+  timestamp: new Date(),
+};
+
+io.to(`booking_${booking._id}`).emit(
+  'ambulance_location',
+  payload
+);
         }
-
         // Fetch fresh copy to broadcast with calculated smart ETA fields
         const listToBroadcast = await Ambulance.find({ isAvailable: true }).lean();
 
