@@ -40,6 +40,9 @@ export default function DriverDashboardScreen() {
   const [actioningId, setActioningId] = useState(null);
   const [tab, setTab] = useState('pending'); // 'pending' | 'active' | 'history'
 
+  const [liveEta, setLiveEta] = useState(null);
+  const [canCompleteTrip, setCanCompleteTrip] = useState(false);
+
   const socketRef = useRef(null);
 
   // Load ambulance + bookings
@@ -79,6 +82,13 @@ export default function DriverDashboardScreen() {
       if (ambulance) {
         sock.emit('join_ambulance_room', ambulance._id);
       }
+      const activeBooking = bookings.find(
+  (b) => b.status === 'confirmed' || b.status === 'in_progress'
+);
+
+if (activeBooking) {
+  sock.emit('join_booking_room', activeBooking._id);
+}
 
       const handleNewRequest = (data) => {
         if (!mounted) return;
@@ -97,12 +107,27 @@ export default function DriverDashboardScreen() {
         );
       };
 
+   const handleLocationUpdate = (data) => {
+  if (!mounted) return;
+
+  console.log('[DRIVER ETA]', data);
+
+  const eta = data.eta ?? data.etaMinutes;
+
+  if (typeof eta === 'number') {
+    setLiveEta(eta);
+    setCanCompleteTrip(eta <= 0);
+  }
+};
+
       sock.on('new_booking_request', handleNewRequest);
       sock.on('booking_status_update', handleStatusUpdate);
+      sock.on('ambulance_location', handleLocationUpdate);
 
       return () => {
         sock.off('new_booking_request', handleNewRequest);
         sock.off('booking_status_update', handleStatusUpdate);
+        sock.off('ambulance_location', handleLocationUpdate);
       };
     };
 
@@ -111,14 +136,22 @@ export default function DriverDashboardScreen() {
       mounted = false;
       cleanup.then((fn) => fn?.());
     };
-  }, [ambulance, tab, connect]);
+  }, [ambulance, bookings, tab, connect]);
 
   const handleAction = async (bookingId, status) => {
     setActioningId(bookingId);
     try {
-      await updateBookingStatus(bookingId, { status });
-      // Refresh current tab
-      await loadData();
+await updateBookingStatus(bookingId, { status });
+await loadData();
+
+if (status === 'in_progress') {
+  const active = bookings.find((b) => b._id === bookingId);
+
+  if (active?.estimatedTime != null) {
+    setLiveEta(active.estimatedTime);
+    setCanCompleteTrip(active.estimatedTime <= 0);
+  }
+}
     } catch (e) {
       Alert.alert('Error', e?.response?.data?.message || 'Action failed.');
     } finally {
@@ -169,13 +202,22 @@ export default function DriverDashboardScreen() {
     if (booking.status === 'in_progress') {
       return (
         <TouchableOpacity
-          style={[styles.actionBtn, styles.completeBtn, { alignSelf: 'flex-start' }]}
-          onPress={() => handleAction(booking._id, 'completed')}
-          disabled={actioningId === booking._id}
-        >
+  style={[
+    styles.actionBtn,
+    styles.completeBtn,
+    { alignSelf: 'flex-start' },
+    !canCompleteTrip && styles.completeBtnDisabled,
+  ]}
+  onPress={() => handleAction(booking._id, 'completed')}
+  disabled={actioningId === booking._id || !canCompleteTrip}
+>
           {actioningId === booking._id
             ? <ActivityIndicator color={Colors.white} size="small" />
-            : <Text style={styles.actionBtnText}>✔ Complete Trip</Text>
+            :<Text style={styles.actionBtnText}>
+  {canCompleteTrip
+    ? '✔ Complete Trip'
+    : `ETA: ${liveEta ?? '--'} min`}
+</Text>
           }
         </TouchableOpacity>
       );
@@ -458,6 +500,10 @@ const styles = StyleSheet.create({
   rejectBtn: { backgroundColor: Colors.statusRejected },
   startBtn: { backgroundColor: Colors.secondary, flex: 0, paddingHorizontal: Spacing.lg },
   completeBtn: { backgroundColor: Colors.accent, flex: 0, paddingHorizontal: Spacing.lg },
+  completeBtnDisabled: {
+  backgroundColor: '#BDBDBD',
+  opacity: 0.7,
+},
   actionBtnText: { fontSize: 14, fontWeight: '700', color: Colors.white },
 
   navigateBtn: {
