@@ -3,6 +3,8 @@ const jwt = require('jsonwebtoken');
 const Ambulance = require('../models/Ambulance');
 const Location = require('../models/Location');
 const Booking = require('../models/Booking');
+const polyline = require('@mapbox/polyline');
+const { getRoutePolyline } = require('./routingService');
 // Routing service & ETA utilities
 const { getRoadInfo, RoutingError } = require('../services/routingService');
 const { calculateSmartETA } = require('../utils/etaPredictor');
@@ -16,8 +18,10 @@ const MOVEMENT_THRESHOLD_M = 200; // 200 metres
 // Separate route cache for simulated active-booking tracking.
 // The simulator moves every 4 seconds, but Google Routes is
 // recalculated at most once every 30 seconds.
+// One route stored for each booking
 const simulatorRouteMap = new Map();
-const SIMULATOR_ROUTE_INTERVAL_MS = 30 * 1000;
+// bookingId -> { points, currentIndex }
+// const SIMULATOR_ROUTE_INTERVAL_MS = 30 * 1000;
 
 const initializeSocket = (server) => {
   io = new Server(server, {
@@ -219,9 +223,8 @@ const initializeSocket = (server) => {
           if (!baseCoords || !baseCoords[0] || !baseCoords[1]) continue;
           const [baseLng, baseLat] = baseCoords;
 
-          // Bounded small movement around stable base location (max ~30-50m offset)
-          const dLng = (Math.random() - 0.5) * 0.0004;
-          const dLat = (Math.random() - 0.5) * 0.0004;
+          const dLng = (Math.random() - 0.5) * 0.0003;
+          const dLat = (Math.random() - 0.5) * 0.0003;
           const newLng = baseLng + dLng;
           const newLat = baseLat + dLat;
 
@@ -316,9 +319,34 @@ const initializeSocket = (server) => {
           }
 
           // Move coordinates 8% closer per step (if not at destination)
-          const step = 0.08;
-          const newLng = ambLng + (pickupLng - ambLng) * step;
-          const newLat = ambLat + (pickupLat - ambLat) * step;
+
+const bookingKey = booking._id.toString();
+
+let routeState = simulatorRouteMap.get(bookingKey);
+
+// Generate the route only once
+if (!routeState) {
+ const points = await getRoutePolyline(
+  { latitude: ambLat, longitude: ambLng },
+  { latitude: pickupLat, longitude: pickupLng }
+);
+
+routeState = {
+  points,
+  currentIndex: 0,
+};
+  simulatorRouteMap.set(bookingKey, routeState);
+}
+
+// Stop at the last point
+if (routeState.currentIndex >= routeState.points.length) {
+  routeState.currentIndex = routeState.points.length - 1;
+}
+
+const [newLat, newLng] =
+  routeState.points[routeState.currentIndex];
+
+routeState.currentIndex++;
 
           const currentSpeed = 35 + Math.floor(Math.random() * 20);
           const trafficLevel = Math.random() > 0.65 ? 'moderate' : 'clear';
@@ -342,62 +370,17 @@ const initializeSocket = (server) => {
           // Calculate LIVE road distance + traffic-aware ETA.
 // The ambulance position changes every 4 seconds,
 // but Google Routes is queried at most once every 30 seconds.
-let liveEta = null;
-let liveRoadDistanceKm = null;
+const remainingPoints =
+  routeState.points.length - routeState.currentIndex;
 
-const bookingKey = booking._id.toString();
-const now = Date.now();
-const cachedRoute = simulatorRouteMap.get(bookingKey);
+const liveEta = Math.max(
+  0,
+  Math.ceil(remainingPoints / 15)
+);
 
-const shouldRefreshRoute =
-  !cachedRoute ||
-  now - cachedRoute.timestamp >= SIMULATOR_ROUTE_INTERVAL_MS;
-
-if (shouldRefreshRoute) {
-  try {
-    const route = await getRoadInfo(
-      {
-        latitude: newLat,
-        longitude: newLng,
-      },
-      {
-        latitude: pickupLat,
-        longitude: pickupLng,
-      }
-    );
-
-    liveEta = route.durationMinutes;
-    liveRoadDistanceKm = route.roadDistanceKm;
-
-    simulatorRouteMap.set(bookingKey, {
-      timestamp: now,
-      eta: liveEta,
-      roadDistanceKm: liveRoadDistanceKm,
-    });
-
-    console.log(
-      `[Simulator Routes] Booking ${bookingKey.slice(-6)}: ` +
-      `Road Distance = ${liveRoadDistanceKm} km, ` +
-      `Traffic ETA = ${liveEta} min`
-    );
-  } catch (err) {
-    console.warn(
-      `[Simulator Routes] Google Routes failed for booking ${bookingKey.slice(-6)}:`,
-      err.message
-    );
-
-    // Keep the last successful real Google Routes value.
-    if (cachedRoute) {
-      liveEta = cachedRoute.eta;
-      liveRoadDistanceKm = cachedRoute.roadDistanceKm;
-    }
-  }
-} else {
-  // Reuse the most recent real Google Routes result
-  // between routing requests.
-  liveEta = cachedRoute.eta;
-  liveRoadDistanceKm = cachedRoute.roadDistanceKm;
-}
+const liveRoadDistanceKm = Number(
+  (remainingPoints * 0.04).toFixed(2)
+);
 
 const payload = {
   ambulanceId: amb._id,

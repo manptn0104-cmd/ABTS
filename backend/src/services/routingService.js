@@ -10,7 +10,7 @@
  */
 
 const fetch = global.fetch || require('node-fetch');
-
+const polyline = require('@mapbox/polyline');
 // ============================================================
 // CONFIGURATION
 // ============================================================
@@ -415,6 +415,32 @@ let response;
   return result;
 }
 
+// ============================================================
+// GET ROUTE POLYLINE (Road Path)
+// ============================================================
+
+async function getRoutePolyline(origin, destination) {
+  validateLatLng(origin, 'Origin');
+  validateLatLng(destination, 'Destination');
+
+  const url =
+    `https://maps.googleapis.com/maps/api/directions/json?` +
+    `origin=${origin.latitude},${origin.longitude}` +
+    `&destination=${destination.latitude},${destination.longitude}` +
+    `&mode=driving&key=${API_KEY}`;
+
+  const response = await fetch(url);
+  const data = await response.json();
+
+  if (!data.routes || data.routes.length === 0) {
+    throw new RoutingError('No driving route found', 404);
+  }
+
+  const encoded = data.routes[0].overview_polyline.points;
+
+// Return decoded GPS coordinates
+return polyline.decode(encoded);
+}
 
 // ============================================================
 // EXPORT
@@ -422,5 +448,6 @@ let response;
 
 module.exports = {
   getRoadInfo,
+  getRoutePolyline,
   RoutingError,
 };
