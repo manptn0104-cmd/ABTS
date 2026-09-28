@@ -93,29 +93,40 @@ export default function MapComponent({
   }, []);
 
   // Helper to create a coloured dot marker (uses SymbolPath from the loaded API)
-  const createDotMarker = (position, color, title) => {
-    return new window.google.maps.Marker({
-      position,
-      map: mapRef.current,
-      title,
-      icon: {
-        path: window.google.maps.SymbolPath.CIRCLE,
-        scale: 8,
-        fillColor: color,
-        fillOpacity: 1,
-        strokeWeight: 2,
-        strokeColor: '#fff',
-      },
-    });
-  };
+ const createEmojiMarker = (position, emoji, title) => {
+  return new window.google.maps.Marker({
+    position,
+    map: mapRef.current,
+    title,
+
+    // Transparent icon so only the emoji is visible
+    icon: {
+      url:
+        'data:image/svg+xml;charset=UTF-8,' +
+        encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>'
+        ),
+      scaledSize: new window.google.maps.Size(1, 1),
+    },
+
+    label: {
+      text: emoji,
+      fontSize: '28px',
+      fontWeight: 'bold',
+    },
+  });
+};
 
   // Update user location marker
   useEffect(() => {
     if (!mapRef.current || !userLocation) return;
     const pos = { lat: userLocation.latitude, lng: userLocation.longitude };
     if (!markersRef.current.user) {
-      markersRef.current.user = createDotMarker(pos, '#2563EB', 'Your Location');
-    } else {
+markersRef.current.user = createEmojiMarker(
+  pos,
+  '📍',
+  'Pickup Location'
+);    } else {
       markersRef.current.user.setPosition(pos);
     }
     // Center map on user if ambulance not yet present
@@ -131,7 +142,11 @@ export default function MapComponent({
     if (!mapRef.current || !ambulanceLocation) return;
     const pos = { lat: ambulanceLocation.latitude, lng: ambulanceLocation.longitude };
     if (!markersRef.current.ambulance) {
-      markersRef.current.ambulance = createDotMarker(pos, '#EF4444', 'Ambulance');
+markersRef.current.ambulance = createEmojiMarker(
+  pos,
+  '🚑',
+  'Ambulance'
+);
     } else {
       markersRef.current.ambulance.setPosition(pos);
     }
