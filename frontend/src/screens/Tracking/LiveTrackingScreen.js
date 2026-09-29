@@ -1,7 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Alert,
-  Animated, Platform,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  Animated,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -290,6 +296,11 @@ export default function LiveTrackingScreen({ route, navigation }) {
 
       {/* Bottom info sheet */}
       <View style={styles.sheet}>
+      <ScrollView
+        style={{ flex: 1 }}
+    showsVerticalScrollIndicator={false}
+    contentContainerStyle={styles.sheetContent}
+  >
         {/* Booking ID & time */}
         <View style={styles.sheetHeader}>
           <View>
@@ -377,12 +388,17 @@ export default function LiveTrackingScreen({ route, navigation }) {
           <MaterialCommunityIcons name="home" size={18} color={Colors.primary} />
           <Text style={styles.homeBtnText}>Back to Home</Text>
         </TouchableOpacity>
+          </ScrollView>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  sheetContent: {
+  flexGrow: 1,
+  paddingBottom: 30,
+},
   safe: { flex: 1, backgroundColor: Colors.background },
   mapContainer: { flex: 1, position: 'relative' },
   map: { flex: 1 },
@@ -396,11 +412,13 @@ const styles = StyleSheet.create({
   statusDot: { width: 10, height: 10, borderRadius: 5 },
   statusText: { fontSize: 14, fontWeight: '700' },
   sheet: {
-    backgroundColor: Colors.surface,
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    padding: Spacing.lg,
-    ...Shadow.heavy,
-    maxHeight: '55%',
+  backgroundColor: Colors.surface,
+  borderTopLeftRadius: 24,
+  borderTopRightRadius: 24,
+  padding: Spacing.lg,
+  ...Shadow.heavy,
+
+  height: '55%',      // instead of maxHeight
   },
   sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: Spacing.md },
   sheetTitle: { fontSize: 16, fontWeight: '700', color: Colors.text },
