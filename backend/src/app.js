@@ -31,10 +31,12 @@ app.use(
       'http://localhost:8083',
       'http://localhost:8084',
       'http://localhost:19006',
+      'https://abts-frontend.vercel.app',
     ],
     credentials: true,
   })
 );
+
 
 app.options('*', cors());
 
