@@ -1,5 +1,7 @@
-export const API_BASE_URL = 'http://localhost:5001/api';
-export const SOCKET_URL = 'http://localhost:5001';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5001';
+
+export const API_BASE_URL = `${API_URL}/api`;
+export const SOCKET_URL = API_URL;
 
 export const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 
