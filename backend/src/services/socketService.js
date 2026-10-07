@@ -6,9 +6,14 @@ const Location = require('../models/Location');
 let io;
 
 const initializeSocket = (server) => {
+  const frontendUrl = process.env.FRONTEND_URL || '';
+  const isDev = process.env.NODE_ENV === 'development';
+  const allowAllOrigins = isDev || !frontendUrl || frontendUrl === '*';
+
   io = new Server(server, {
     cors: {
-      origin: (process.env.FRONTEND_URL || '*').split(',').map(u => u.trim()),
+      // In local dev we allow all origins so Expo web/mobile can connect without CORS friction.
+      origin: allowAllOrigins ? true : frontendUrl.split(',').map((u) => u.trim()),
       methods: ['GET', 'POST'],
       credentials: true,
     },

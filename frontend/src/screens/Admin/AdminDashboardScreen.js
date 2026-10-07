@@ -12,7 +12,7 @@ import { logout } from '../../store/authSlice';
 import { Colors, Spacing } from '../../theme';
 import { API_BASE_URL } from '../../utils/constants';
 
-const TABS = ['Overview', 'Bookings', 'Users', 'Ambulances'];
+const TABS = ['Overview', 'Bookings', 'Users', 'Ambulances', 'Emergency'];
 
 const STATUS_COLOR = {
   pending:     '#F57F17',
@@ -330,12 +330,75 @@ function BookingsTab() {
   );
 }
 
+// ── Register Driver Modal ──────────────────────────────────────────────────────
+const BLANK_DRIVER = { name: '', email: '', phone: '', password: '' };
+
+function RegisterDriverModal({ visible, onClose, onSaved }) {
+  const [form, setForm]     = useState(BLANK_DRIVER);
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState('');
+
+  const handleSave = async () => {
+    if (!form.name.trim() || !form.email.trim() || !form.phone.trim() || !form.password.trim()) {
+      setError('All fields are required.'); return;
+    }
+    if (form.phone.replace(/\D/g, '').length < 10) { setError('Enter a valid 10-digit phone number.'); return; }
+    setSaving(true); setError('');
+    try {
+      const res = await adminPost('/auth/register', { ...form, role: 'driver' });
+      if (res.success) { setForm(BLANK_DRIVER); onSaved(); onClose(); }
+      else setError(res.message || 'Failed to register driver.');
+    } catch { setError('Network error.'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalBox}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Register New Driver</Text>
+            <TouchableOpacity onPress={onClose}><MaterialCommunityIcons name="close" size={22} color={Colors.text} /></TouchableOpacity>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {error ? <Text style={styles.modalError}>{error}</Text> : null}
+            {[
+              { key: 'name',     label: 'Full Name' },
+              { key: 'email',    label: 'Email Address', kb: 'email-address' },
+              { key: 'phone',    label: 'Phone Number (10 digits)', kb: 'phone-pad' },
+              { key: 'password', label: 'Password (min 6 chars)', secure: true },
+            ].map(({ key, label, kb, secure }) => (
+              <View key={key} style={{ marginBottom: 10 }}>
+                <Text style={styles.inputLabel}>{label}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={form[key]}
+                  onChangeText={(v) => setForm((f) => ({ ...f, [key]: v }))}
+                  keyboardType={kb || 'default'}
+                  secureTextEntry={!!secure}
+                  autoCapitalize={key === 'email' ? 'none' : 'words'}
+                  placeholder={label}
+                  placeholderTextColor={Colors.textMuted}
+                />
+              </View>
+            ))}
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
+              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Register Driver</Text>}
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 // ── Users Tab ──────────────────────────────────────────────────────────────────
 function UsersTab() {
-  const [users, setUsers]     = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refresh, setRefresh] = useState(false);
-  const [filter, setFilter]   = useState('');
+  const [users, setUsers]          = useState([]);
+  const [loading, setLoading]      = useState(true);
+  const [refresh, setRefresh]      = useState(false);
+  const [filter, setFilter]        = useState('');
+  const [showDriverModal, setShowDriverModal] = useState(false);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefresh(true); else setLoading(true);
@@ -350,25 +413,34 @@ function UsersTab() {
 
   return (
     <View style={{ flex: 1 }}>
-      <View style={styles.filterBar}>
-        {['', 'user', 'driver'].map((r) => {
-          const chipColor = r === 'driver' ? '#00897B' : Colors.primary;
-          const isActive  = filter === r;
-          return (
-            <TouchableOpacity
-              key={r}
-              style={[
-                styles.filterChip,
-                isActive && { backgroundColor: chipColor, borderColor: chipColor },
-              ]}
-              onPress={() => setFilter(r)}
-            >
-              <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
-                {r ? r.charAt(0).toUpperCase() + r.slice(1) : 'All'}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+      <View style={[styles.filterBar, { justifyContent: 'space-between' }]}>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {['', 'user', 'driver'].map((r) => {
+            const chipColor = r === 'driver' ? '#00897B' : Colors.primary;
+            const isActive  = filter === r;
+            return (
+              <TouchableOpacity
+                key={r}
+                style={[
+                  styles.filterChip,
+                  isActive && { backgroundColor: chipColor, borderColor: chipColor },
+                ]}
+                onPress={() => setFilter(r)}
+              >
+                <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                  {r ? r.charAt(0).toUpperCase() + r.slice(1) : 'All'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <TouchableOpacity
+          style={[styles.filterChip, { backgroundColor: '#00897B', borderColor: '#00897B', flexDirection: 'row', alignItems: 'center', gap: 4 }]}
+          onPress={() => setShowDriverModal(true)}
+        >
+          <MaterialCommunityIcons name="plus" size={14} color="#fff" />
+          <Text style={[styles.filterChipText, { color: '#fff', fontWeight: '700' }]}>Add Driver</Text>
+        </TouchableOpacity>
       </View>
 
       {loading ? (
@@ -395,13 +467,16 @@ function UsersTab() {
           )}
         />
       )}
+      <RegisterDriverModal
+        visible={showDriverModal}
+        onClose={() => setShowDriverModal(false)}
+        onSaved={() => load(true)}
+      />
     </View>
   );
 }
 
 // ── Ambulances Tab ─────────────────────────────────────────────────────────────
-const AMBULANCE_TYPES = ['basic', 'advanced', 'icu', 'neonatal'];
-const SPECIALIZATIONS = ['accident', 'cardiac', 'respiratory', 'trauma', 'maternity', 'general', 'other'];
 const TYPE_COLOR = { basic: '#1565C0', advanced: '#7B1FA2', icu: '#C62828', neonatal: '#00897B' };
 
 const BLANK_FORM = {
@@ -414,6 +489,7 @@ function RegisterModal({ visible, drivers, onClose, onSaved }) {
   const [form, setForm]       = useState(BLANK_FORM);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState('');
+  const { ambulanceTypesList, specializations } = useSelector((s) => s.config);
 
   const toggleSpec = (s) =>
     setForm((f) => ({
@@ -499,7 +575,7 @@ function RegisterModal({ visible, drivers, onClose, onSaved }) {
             {/* Type */}
             <Text style={styles.inputLabel}>Ambulance Type</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-              {AMBULANCE_TYPES.map((t) => (
+              {ambulanceTypesList.map((t) => (
                 <TouchableOpacity
                   key={t}
                   style={[styles.typeChip, form.type === t && { backgroundColor: TYPE_COLOR[t], borderColor: TYPE_COLOR[t] }]}
@@ -513,7 +589,7 @@ function RegisterModal({ visible, drivers, onClose, onSaved }) {
             {/* Specializations */}
             <Text style={styles.inputLabel}>Specializations</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-              {SPECIALIZATIONS.map((s) => (
+              {specializations.map((s) => (
                 <TouchableOpacity
                   key={s}
                   style={[styles.typeChip, form.specializations.includes(s) && styles.typeChipActive]}
@@ -658,12 +734,114 @@ function AmbulancesTab() {
   );
 }
 
+// ── Emergency Config Tab ───────────────────────────────────────────────────────
+function EmergencyConfigTab() {
+  const [config, setConfig]   = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState(false);
+  const [saved,   setSaved]   = useState(false);
+  const [error,   setError]   = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await adminFetch('/bike-ambulances/emergency-config');
+      if (res.success) setConfig(res.config);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSave = async () => {
+    setSaving(true); setError(''); setSaved(false);
+    try {
+      const res = await adminPatch('/bike-ambulances/emergency-config', config);
+      if (res.success) { setSaved(true); setTimeout(() => setSaved(false), 2000); }
+      else setError(res.message || 'Save failed.');
+    } catch { setError('Network error.'); }
+    finally { setSaving(false); }
+  };
+
+  if (loading) return <View style={styles.center}><ActivityIndicator color={Colors.primary} size="large" /></View>;
+  if (!config)  return <Text style={[styles.emptyText, { padding: 20 }]}>Could not load emergency config.</Text>;
+
+  const toggle = (key) => setConfig((c) => ({ ...c, [key]: !c[key] }));
+  const setNum  = (key, val) => {
+    const n = parseInt(val);
+    setConfig((c) => ({ ...c, [key]: isNaN(n) ? c[key] : n }));
+  };
+
+  return (
+    <ScrollView contentContainerStyle={styles.tabContent}>
+      {/* Banner */}
+      <View style={[styles.card, { backgroundColor: '#1A237E', borderColor: '#3949AB', borderWidth: 1 }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <MaterialCommunityIcons name="motorbike" size={20} color="#69F0AE" />
+          <Text style={{ fontSize: 15, fontWeight: '800', color: '#fff' }}>Bike Ambulance Emergency Config</Text>
+        </View>
+        <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)' }}>
+          Configure when the system recommends a Bike Ambulance as a faster emergency response.
+        </Text>
+      </View>
+
+      {/* Toggle fields */}
+      {[
+        { key: 'bikeAmbulanceEnabled',  label: 'Bike Ambulance Enabled',    desc: 'Master switch for bike ambulance feature' },
+        { key: 'allowParallelDispatch', label: 'Allow Parallel Dispatch',   desc: 'Dispatch bike + regular ambulance simultaneously' },
+        { key: 'allowAutoBikeDispatch', label: 'Auto Bike Dispatch',        desc: 'Automatically assign without supervisor confirmation' },
+      ].map(({ key, label, desc }) => (
+        <View key={key} style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>{label}</Text>
+            <Text style={[styles.cardSub, { marginTop: 2 }]}>{desc}</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.toggleBtn, config[key] ? styles.toggleBtnActive : styles.toggleBtnInactive, { paddingHorizontal: 16 }]}
+            onPress={() => toggle(key)}
+          >
+            <Text style={styles.toggleBtnText}>{config[key] ? 'ON' : 'OFF'}</Text>
+          </TouchableOpacity>
+        </View>
+      ))}
+
+      {/* Numeric fields */}
+      {[
+        { key: 'maxRegularAmbulanceETA', label: 'Max Regular Ambulance ETA', unit: 'minutes', desc: 'Recommend bike if regular ETA exceeds this' },
+        { key: 'minETAImprovement',      label: 'Min ETA Improvement',       unit: 'minutes', desc: 'Bike must save at least this many minutes' },
+        { key: 'bikeSearchRadius',       label: 'Bike Search Radius',        unit: 'metres',  desc: 'Maximum radius to search for bike ambulances' },
+      ].map(({ key, label, unit, desc }) => (
+        <View key={key} style={styles.card}>
+          <Text style={styles.cardTitle}>{label}</Text>
+          <Text style={[styles.cardSub, { marginBottom: 8 }]}>{desc}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <TextInput
+              style={[styles.input, { flex: 1, marginBottom: 0 }]}
+              value={String(config[key] ?? '')}
+              onChangeText={(v) => setNum(key, v)}
+              keyboardType="numeric"
+              placeholderTextColor={Colors.textMuted}
+            />
+            <Text style={styles.cardSub}>{unit}</Text>
+          </View>
+        </View>
+      ))}
+
+      {error ? <Text style={[styles.modalError, { marginBottom: 8 }]}>{error}</Text> : null}
+      {saved  ? <Text style={{ color: '#2E7D32', textAlign: 'center', fontWeight: '700', marginBottom: 8 }}>✓ Saved successfully</Text> : null}
+
+      <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
+        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Emergency Config</Text>}
+      </TouchableOpacity>
+    </ScrollView>
+  );
+}
+
 // ── Main Admin Dashboard ───────────────────────────────────────────────────────
 export default function AdminDashboardScreen() {
   const dispatch = useDispatch();
   const [activeTab, setActiveTab] = useState(0);
 
-  const TAB_ICONS = ['view-dashboard', 'clipboard-list', 'account-multiple', 'ambulance'];
+  const TAB_ICONS = ['view-dashboard', 'clipboard-list', 'account-multiple', 'ambulance', 'motorbike'];
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -708,6 +886,7 @@ export default function AdminDashboardScreen() {
         {activeTab === 1 && <BookingsTab />}
         {activeTab === 2 && <UsersTab />}
         {activeTab === 3 && <AmbulancesTab />}
+        {activeTab === 4 && <EmergencyConfigTab />}
       </View>
     </SafeAreaView>
   );

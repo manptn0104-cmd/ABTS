@@ -7,19 +7,52 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { createBooking, clearCurrent } from '../../store/bookingSlice';
+import { fetchAmbulanceById } from '../../store/ambulanceSlice';
 import Button from '../../components/common/Button';
 import Card   from '../../components/common/Card';
 import Input  from '../../components/common/Input';
 import { Colors, Spacing, BorderRadius, Typography } from '../../theme';
 import { formatCurrency, formatDistance, formatETA, getAmbulanceType, haversineDistance } from '../../utils/helpers';
-import { EMERGENCY_TYPES, PAYMENT_METHODS, FACILITIES } from '../../utils/constants';
+import { useLocation } from '../../hooks/useLocation';
+import { API_BASE_URL } from '../../utils/constants';
+
 
 export default function BookingConfirmationScreen({ route, navigation }) {
-  const { ambulance, location, selectedFacilities } = route.params || {};
+  const { ambulanceId, location, selectedFacilities } = route.params || {};
   const dispatch = useDispatch();
-  const { isCreating, current: booking, error } = useSelector((s) => s.booking);
+  const { isCreating, current: booking } = useSelector((s) => s.booking);
+  const { selected: ambulance, isLoadingDetails } = useSelector((s) => s.ambulance);
+  const { paymentMethods, facilities } = useSelector((s) => s.config);
 
-  const [emergencyType,  setEmergencyType]  = useState('general');
+  // Fetch ambulance if not already in Redux (e.g. direct URL navigation)
+  useEffect(() => {
+    if (ambulanceId && (!ambulance || ambulance._id !== ambulanceId)) {
+      dispatch(fetchAmbulanceById(ambulanceId));
+    }
+  }, [ambulanceId]);
+
+  // GPS — auto-detected silently for the booking payload
+  const { location: gpsLocation, address: gpsAddress, getCurrentLocation } = useLocation();
+  const [pickupCoords, setPickupCoords] = useState(location || null);
+  const [pickupAddress, setPickupAddress] = useState(location?.address || '');
+
+  const resolvePickupLocation = useCallback(() => {
+    if (location) {
+      const nextCoords = { latitude: location.latitude ?? location.coords?.latitude, longitude: location.longitude ?? location.coords?.longitude };
+      const hasCoords = Number.isFinite(nextCoords.latitude) && Number.isFinite(nextCoords.longitude);
+      if (hasCoords) {
+        setPickupCoords(nextCoords);
+      }
+      setPickupAddress(location.address || gpsAddress || (hasCoords ? `GPS (${nextCoords.latitude.toFixed(5)}, ${nextCoords.longitude.toFixed(5)})` : 'Current Location'));
+      return;
+    }
+
+    if (gpsLocation) {
+      setPickupCoords(gpsLocation);
+      setPickupAddress(gpsAddress || `GPS (${gpsLocation.latitude.toFixed(5)}, ${gpsLocation.longitude.toFixed(5)})`);
+    }
+  }, [gpsAddress, gpsLocation, location]);
+
   const [paymentMethod,  setPaymentMethod]  = useState('cash');
   const [patientDetails, setPatientDetails] = useState({ name: '', age: '', condition: '', bloodGroup: 'unknown' });
   const [emergencyContact, setEmergencyContact] = useState({ name: '', phone: '' });
@@ -30,41 +63,6 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [riskAccepted, setRiskAccepted] = useState(false);
 
-  // Address fetching logic
-  const [displayAddress, setDisplayAddress] = useState(route.params.searchText || '');
-  
-  useEffect(() => {
-    if (!displayAddress && location) {
-      const fetchAddress = async () => {
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${location.latitude}&lon=${location.longitude}`, {
-            headers: {
-              'User-Agent': 'ABTS-App/1.0',
-              'Accept-Language': 'en-US,en;q=0.9'
-            }
-          });
-          const data = await res.json();
-          if (data && data.display_name) {
-            setDisplayAddress(data.display_name);
-          } else {
-            setDisplayAddress('Current GPS Location');
-          }
-        } catch (e) {
-          setDisplayAddress('Current GPS Location');
-        }
-      };
-      fetchAddress();
-    }
-  }, [location, displayAddress]);
-
-  // Pickup location (editable, pre-filled from home screen)
-  const [pickupAddress,    setPickupAddress]    = useState(route.params.searchText || '');
-  const [pickupCoords,     setPickupCoords]     = useState(location || null);
-  const [pickupSuggestions, setPickupSuggestions] = useState([]);
-  const [pickupSugLoading,  setPickupSugLoading]  = useState(false);
-  const [showPickupSug,     setShowPickupSug]     = useState(false);
-  const pickupDebounceRef = useRef(null);
-
   // Drop location
   const [dropAddress,    setDropAddress]    = useState('');
   const [dropCoords,     setDropCoords]     = useState(null);
@@ -73,50 +71,60 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   const [showDropSug,     setShowDropSug]     = useState(false);
   const dropDebounceRef = useRef(null);
 
-  const nominatimSearch = useCallback(async (query) => {
-    // Bug #8 fix: bias results near ambulance / pickup coords
-    const biasLat = pickupCoords?.latitude  ?? location?.latitude  ?? 12.9716;
-    const biasLng = pickupCoords?.longitude ?? location?.longitude ?? 77.5946;
-    const viewbox = `${biasLng - 0.5},${biasLat + 0.5},${biasLng + 0.5},${biasLat - 0.5}`;
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=6&countrycodes=in&viewbox=${viewbox}&bounded=0`;
-    const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+  const fetchPlaceDetails = useCallback(async (placeId) => {
+    if (!placeId) return null;
+
+    const detailsUrl = `${API_BASE_URL}/maps/details?place_id=${encodeURIComponent(placeId)}`;
+    const res = await fetch(detailsUrl);
     const data = await res.json();
-    return data.map((r) => ({
-      label:     r.display_name,
-      shortLabel: [r.address?.road, r.address?.suburb, r.address?.city || r.address?.town || r.address?.village]
-                    .filter(Boolean).join(', ') || r.display_name,
-      lat: parseFloat(r.lat),
-      lng: parseFloat(r.lon),
+
+    if (data.status !== 'OK' || !data.result?.geometry?.location) return null;
+
+    return {
+      label: data.result.formatted_address || data.result.name,
+      shortLabel: data.result.formatted_address || data.result.name,
+      lat: data.result.geometry.location.lat,
+      lng: data.result.geometry.location.lng,
+    };
+  }, []);
+
+  const nominatimSearch = useCallback(async (query) => {
+    const trimmed = (query || '').trim();
+    if (!trimmed || trimmed.length < 2) return [];
+
+    const biasLat = location?.latitude ?? 12.9716;
+    const biasLng = location?.longitude ?? 77.5946;
+    const url = `${API_BASE_URL}/maps/autocomplete?input=${encodeURIComponent(trimmed)}&lat=${biasLat}&lng=${biasLng}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+      throw new Error(data.status || 'Google Places autocomplete failed');
+    }
+
+    return (data.predictions || []).map((item) => ({
+      key: item.place_id,
+      label: item.description,
+      shortLabel: item.structured_formatting?.main_text || item.description,
+      placeId: item.place_id,
     }));
-  }, [pickupCoords, location]);
+  }, [location]);
 
-  const fetchPickupSuggestions = useCallback(async (query) => {
-    if (!query || query.length < 3) { setPickupSuggestions([]); return; }
-    setPickupSugLoading(true);
-    try { setPickupSuggestions(await nominatimSearch(query)); }
-    catch (_) { setPickupSuggestions([]); }
-    finally { setPickupSugLoading(false); }
-  }, [nominatimSearch]);
+  // Auto-fetch GPS silently on mount if no location from previous screen
+  useEffect(() => {
+    if (!location) getCurrentLocation();
+  }, []);
 
-  const handlePickupTextChange = (text) => {
-    setPickupAddress(text);
-    setPickupCoords(null); // coords invalidated until user picks suggestion
-    setShowPickupSug(true);
-    clearTimeout(pickupDebounceRef.current);
-    pickupDebounceRef.current = setTimeout(() => fetchPickupSuggestions(text), 400);
-  };
-
-  const handleSelectPickupSuggestion = (s) => {
-    setPickupAddress(s.shortLabel);
-    setPickupCoords({ latitude: s.lat, longitude: s.lng });
-    setPickupSuggestions([]);
-    setShowPickupSug(false);
-  };
+  // Merge route and GPS data so the pickup location always contains the best available coordinates + address.
+  useEffect(() => {
+    resolvePickupLocation();
+  }, [resolvePickupLocation]);
 
   const fetchDropSuggestions = useCallback(async (query) => {
-    if (!query || query.length < 3) { setDropSuggestions([]); return; }
+    const trimmed = (query || '').trim();
+    if (!trimmed || trimmed.length < 2) { setDropSuggestions([]); return; }
     setDropSugLoading(true);
-    try { setDropSuggestions(await nominatimSearch(query)); }
+    try { setDropSuggestions(await nominatimSearch(trimmed)); }
     catch (_) { setDropSuggestions([]); }
     finally { setDropSugLoading(false); }
   }, [nominatimSearch]);
@@ -128,15 +136,34 @@ export default function BookingConfirmationScreen({ route, navigation }) {
     dropDebounceRef.current = setTimeout(() => fetchDropSuggestions(text), 400);
   };
 
-  const handleSelectDropSuggestion = (s) => {
-    setDropAddress(s.shortLabel);
-    setDropCoords({ latitude: s.lat, longitude: s.lng });
+  const handleSelectDropSuggestion = async (s) => {
+    let resolved = { ...s };
+
+    if (s.placeId) {
+      const details = await fetchPlaceDetails(s.placeId);
+      if (details) {
+        resolved = { ...resolved, ...details };
+      }
+    }
+
+    setDropAddress(resolved.shortLabel || resolved.label || s.shortLabel || s.label);
+    setDropCoords({ latitude: resolved.lat, longitude: resolved.lng });
     setDropSuggestions([]);
     setShowDropSug(false);
   };
 
   // Clear any stale booking from previous session on mount
   useEffect(() => { dispatch(clearCurrent()); }, [dispatch]);
+
+  // Show spinner while ambulance data is loading
+  if (isLoadingDetails || !ambulance) {
+    return (
+      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <ActivityIndicator size="large" color="#C62828" />
+        <Text style={{ marginTop: 12, color: '#555', fontSize: 14 }}>Loading ambulance details…</Text>
+      </SafeAreaView>
+    );
+  }
 
   const typeConfig = getAmbulanceType(ambulance.type);
 
@@ -155,8 +182,17 @@ export default function BookingConfirmationScreen({ route, navigation }) {
     }
   }, [booking]);
 
+  // Cross-platform alert helper
+  const showAlert = (title, msg) => {
+    if (Platform.OS === 'web') { window.alert(`${title}\n\n${msg}`); }
+    else { Alert.alert(title, msg); }
+  };
+
   const doBooking = async () => {
-    const resolvedPickup = location;
+    const resolvedPickup = pickupCoords || gpsLocation || location || null;
+    const finalPickupAddress = pickupAddress || gpsAddress || (
+      resolvedPickup ? `GPS (${resolvedPickup.latitude.toFixed(5)}, ${resolvedPickup.longitude.toFixed(5)})` : 'Current Location'
+    );
 
     const result = await dispatch(
       createBooking({
@@ -164,14 +200,11 @@ export default function BookingConfirmationScreen({ route, navigation }) {
         pickupLocation: {
           type: 'Point',
           coordinates: resolvedPickup ? [resolvedPickup.longitude, resolvedPickup.latitude] : [0, 0],
-          address: displayAddress.trim() || 
-                   (resolvedPickup ? `Current GPS Location (${resolvedPickup.latitude.toFixed(5)}, ${resolvedPickup.longitude.toFixed(5)})` : 'Current GPS Location'),
+          address: finalPickupAddress,
         },
-        // Drop location is fully optional — only include it if coords were resolved from a suggestion
         dropLocation: (dropCoords && dropAddress)
           ? { type: 'Point', coordinates: [dropCoords.longitude, dropCoords.latitude], address: dropAddress }
           : undefined,
-        emergencyType,
         requiredFacilities,
         patientConsent: {
           accepted: consentAccepted,
@@ -196,14 +229,8 @@ export default function BookingConfirmationScreen({ route, navigation }) {
     );
 
     if (createBooking.rejected.match(result)) {
-      Alert.alert('Booking Failed', result.payload || 'Could not create booking. Please try again.');
+      showAlert('Booking Failed', result.payload || 'Could not create booking. Please try again.');
     }
-  };
-
-  // Cross-platform alert helper
-  const showAlert = (title, msg) => {
-    if (Platform.OS === 'web') { window.alert(`${title}\n\n${msg}`); }
-    else { Alert.alert(title, msg); }
   };
 
   const handleConfirm = () => {
@@ -377,7 +404,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
         <Card shadow="light" style={styles.section}>
           <Text style={styles.sectionTitle}>Payment Method</Text>
           <View style={styles.payRow}>
-            {PAYMENT_METHODS.map((m) => (
+            {paymentMethods.map((m) => (
               <TouchableOpacity
                 key={m.value}
                 style={[styles.payChip, paymentMethod === m.value && styles.payChipActive]}
@@ -488,15 +515,11 @@ export default function BookingConfirmationScreen({ route, navigation }) {
             <View style={styles.overlayLocationBox}>
               <MaterialCommunityIcons name="map-marker" size={20} color={Colors.primary} />
               <Text style={styles.overlayLocationText}>
-                {displayAddress.trim() || 'Current GPS Location'}
+                {pickupAddress || (pickupCoords
+                  ? `GPS • ${pickupCoords.latitude.toFixed(5)}, ${pickupCoords.longitude.toFixed(5)}`
+                  : 'Current Location')}
               </Text>
             </View>
-
-            {location && (
-              <Text style={styles.overlayCoords}>
-                {location.latitude.toFixed(5)}, {location.longitude.toFixed(5)}
-              </Text>
-            )}
 
             <Text style={styles.overlayQuestion}>Is this the correct pickup location?</Text>
 
@@ -655,7 +678,6 @@ const styles = StyleSheet.create({
   bgChipText:      { fontSize: 13, fontWeight: '600', color: Colors.textSecondary },
   bgChipTextActive:{ color: Colors.white },
 
-  pickupHint: { fontSize: 12, color: '#E53935', marginTop: 6, marginLeft: 4 },
   dropInputRowError: { borderColor: '#E53935' },
 
   // Drop location autocomplete

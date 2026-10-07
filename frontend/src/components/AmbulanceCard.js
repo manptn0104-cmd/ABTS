@@ -1,15 +1,16 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useSelector } from 'react-redux';
 import { Colors, BorderRadius, Shadow, Spacing } from '../theme';
 import { getAmbulanceType, formatDistance, formatETA, formatCurrency } from '../utils/helpers';
-import { FACILITIES } from '../utils/constants';
 
 export default function AmbulanceCard({ ambulance, onPress, style }) {
+  const { facilities } = useSelector((s) => s.config);
   const typeConfig    = getAmbulanceType(ambulance.type);
   const distanceKm    = ambulance.distanceKm ?? null;
   const etaMin        = ambulance.estimatedArrivalMin ?? null;
-  const availFacilities = FACILITIES.filter((f) => ambulance.facilities?.[f.key]);
+  const availFacilities = facilities.filter((f) => ambulance.facilities?.[f.key]);
 
   return (
     <TouchableOpacity
@@ -40,6 +41,14 @@ export default function AmbulanceCard({ ambulance, onPress, style }) {
         <MaterialCommunityIcons name="account" size={16} color={Colors.textSecondary} />
         <Text style={styles.driverName}>{ambulance.driverName}</Text>
       </View>
+
+      {/* Exact driver current location */}
+      {ambulance.currentLocation?.address ? (
+        <View style={styles.row}>
+          <MaterialCommunityIcons name="map-marker-radius" size={16} color={Colors.primary} />
+          <Text style={styles.driverName}>Driver: {ambulance.currentLocation.address}</Text>
+        </View>
+      ) : null}
 
       {/* Distance & ETA */}
       {distanceKm !== null && (

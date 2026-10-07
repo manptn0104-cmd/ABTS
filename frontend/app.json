@@ -22,7 +22,7 @@
       ],
       "config": {
         "googleMaps": {
-          "apiKey": "YOUR_ANDROID_GOOGLE_MAPS_API_KEY"
+          "apiKey": "AIzaSyCxFnORXAt8e20GKVDMQHEW2hsOlNITK0k"
         }
       }
     },
@@ -31,7 +31,7 @@
       "name": "ABTS Ambulance",
       "themeColor": "#C62828",
       "config": {
-        "googleMapsApiKey": "YOUR_WEB_GOOGLE_MAPS_API_KEY"
+        "googleMapsApiKey": "AIzaSyCxFnORXAt8e20GKVDMQHEW2hsOlNITK0k"
       }
     },
     "plugins": [

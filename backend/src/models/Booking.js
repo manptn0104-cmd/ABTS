@@ -60,11 +60,6 @@ const bookingSchema = new mongoose.Schema(
       },
       address: { type: String },
     },
-    emergencyType: {
-      type: String,
-      enum: ['accident', 'cardiac', 'respiratory', 'trauma', 'maternity', 'general', 'other'],
-      default: 'general',
-    },
     requiredFacilities: {
       type: [String],
       enum: ['oxygen', 'saline', 'stretcher', 'nurse', 'doctor', 'ventilator', 'defibrillator', 'cctvCamera'],

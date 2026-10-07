@@ -15,11 +15,12 @@
       align-items: center;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       padding: 24px 16px 40px;
+      overflow-x: auto;
     }
 
     .top-bar {
       width: 100%;
-      max-width: 1100px;
+      max-width: 1280px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -52,9 +53,9 @@
 
     .phones-row {
       display: flex;
-      gap: 40px;
+      gap: 16px;
       align-items: flex-start;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       justify-content: center;
     }
 
@@ -73,32 +74,33 @@
       font-weight: 700;
       letter-spacing: 0.5px;
     }
-    .label-user   { background: rgba(25,118,210,0.25); color: #64b5f6; border: 1px solid rgba(100,181,246,0.4); }
-    .label-driver { background: rgba(46,125,50,0.25);  color: #81c784; border: 1px solid rgba(129,199,132,0.4); }
-    .label-admin  { background: rgba(198,40,40,0.25);  color: #ef9a9a; border: 1px solid rgba(239,154,154,0.4); }
+    .label-user        { background: rgba(25,118,210,0.25);  color: #64b5f6; border: 1px solid rgba(100,181,246,0.4); }
+    .label-driver     { background: rgba(46,125,50,0.25);   color: #81c784; border: 1px solid rgba(129,199,132,0.4); }
+    .label-admin      { background: rgba(198,40,40,0.25);   color: #ef9a9a; border: 1px solid rgba(239,154,154,0.4); }
+    .label-superadmin { background: rgba(106,27,154,0.25);  color: #ce93d8; border: 1px solid rgba(206,147,216,0.4); }
 
     /* Phone shell */
     .phone-shell {
       position: relative;
-      width: 390px;
+      width: 300px;
       background: #1a1a1a;
-      border-radius: 50px;
-      padding: 14px;
+      border-radius: 40px;
+      padding: 12px;
       box-shadow:
         0 0 0 2px #333,
         0 0 0 4px #111,
-        0 30px 80px rgba(0,0,0,0.7),
+        0 24px 60px rgba(0,0,0,0.7),
         inset 0 1px 0 rgba(255,255,255,0.08);
     }
 
     .phone-shell::before {
       content: '';
       position: absolute;
-      top: 14px; left: 50%;
+      top: 10px; left: 50%;
       transform: translateX(-50%);
-      width: 100px; height: 28px;
+      width: 80px; height: 18px;
       background: #1a1a1a;
-      border-radius: 0 0 18px 18px;
+      border-radius: 0 0 14px 14px;
       z-index: 10;
     }
 
@@ -106,21 +108,23 @@
     .phone-shell::after {
       content: '';
       position: absolute;
-      right: -4px; top: 120px;
-      width: 4px; height: 60px;
+      right: -3px; top: 90px;
+      width: 4px; height: 48px;
       background: #333;
-      border-radius: 0 3px 3px 0;
-      box-shadow: 0 80px 0 #333;
+      border-radius: 0 4px 4px 0;
+      box-shadow: 0 64px 0 #333;
     }
 
     .phone-screen {
       width: 100%;
-      height: 780px;
-      border-radius: 38px;
+      height: 560px;
+      border-radius: 30px;
       overflow: hidden;
       background: #000;
+      position: relative;
     }
 
+    /* Let iframe render at the container's natural width — no transform needed */
     .phone-screen iframe {
       width: 100%;
       height: 100%;
@@ -129,7 +133,7 @@
     }
 
     .phone-url {
-      font-size: 11px;
+      font-size: 12px;
       color: rgba(255,255,255,0.35);
       text-align: center;
       font-family: 'Courier New', monospace;
@@ -138,9 +142,9 @@
     .credentials {
       background: rgba(255,255,255,0.06);
       border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 16px;
-      padding: 16px 20px;
-      width: 390px;
+      border-radius: 14px;
+      padding: 14px 16px;
+      width: 300px;
     }
 
     .cred-title {
@@ -177,14 +181,14 @@
     }
 
     .separator {
-      width: 1px; height: 200px;
+      width: 1px; height: 150px;
       background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.15), transparent);
-      margin: 0 4px;
+      margin: 0 2px;
+      align-self: center;
     }
 
-    @media (max-width: 900px) {
+    @media (max-width: 1200px) {
       .separator { display: none; }
-      .phones-row { gap: 48px; }
     }
   </style>
 </head>
@@ -200,7 +204,7 @@
     </div>
     <div class="status-bar">
       <div class="dot"></div>
-      <div class="status-text">Live Demo &nbsp;·&nbsp; Backend :5000 &nbsp;·&nbsp; User :8081 &nbsp;·&nbsp; Driver :8082 &nbsp;·&nbsp; Admin :8083</div>
+      <div class="status-text">Live Demo &nbsp;·&nbsp; Backend :5000 &nbsp;·&nbsp; User :8081 &nbsp;·&nbsp; Driver :8082 &nbsp;·&nbsp; Admin :8083 &nbsp;·&nbsp; SuperAdmin :8084</div>
     </div>
   </div>
 
@@ -212,11 +216,11 @@
 
       <div class="phone-shell">
         <div class="phone-screen">
-          <iframe src="http://localhost:8081" title="User App" allow="geolocation"></iframe>
+          <iframe id="iframe-user" src="http://localhost:8085" title="User App" allow="geolocation"></iframe>
         </div>
       </div>
 
-      <div class="phone-url">localhost:8081</div>
+      <div id="url-user" class="phone-url">localhost:8085</div>
 
       <div class="credentials">
         <div class="cred-title">Demo Credentials</div>
@@ -239,11 +243,11 @@
 
       <div class="phone-shell">
         <div class="phone-screen">
-          <iframe src="http://localhost:8082" title="Driver App" allow="geolocation"></iframe>
+          <iframe id="iframe-driver" src="http://localhost:8082" title="Driver App" allow="geolocation"></iframe>
         </div>
       </div>
 
-      <div class="phone-url">localhost:8082</div>
+      <div id="url-driver" class="phone-url">localhost:8082</div>
 
       <div class="credentials">
         <div class="cred-title">Demo Driver Accounts</div>
@@ -282,11 +286,11 @@
 
       <div class="phone-shell">
         <div class="phone-screen">
-          <iframe src="http://localhost:8083" title="Admin App" allow="geolocation"></iframe>
+          <iframe id="iframe-admin" src="http://localhost:8083" title="Admin App" allow="geolocation"></iframe>
         </div>
       </div>
 
-      <div class="phone-url">localhost:8083</div>
+      <div id="url-admin" class="phone-url">localhost:8083</div>
 
       <div class="credentials">
         <div class="cred-title">Admin Credentials</div>
@@ -301,7 +305,74 @@
       </div>
     </div>
 
+    <div class="separator"></div>
+
+    <!-- SUPER ADMIN PHONE -->
+    <div class="phone-column">
+      <div class="phone-label label-superadmin">👑 Super Admin</div>
+
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <iframe id="iframe-superadmin" src="http://localhost:8084" title="Super Admin App" allow="geolocation"></iframe>
+        </div>
+      </div>
+
+      <div id="url-superadmin" class="phone-url">localhost:8084</div>
+
+      <div class="credentials">
+        <div class="cred-title">Super Admin Credentials</div>
+        <div class="cred-row">
+          <span class="cred-icon">🔱</span>
+          <div class="cred-info">
+            <div class="cred-email">superadmin@abts.com</div>
+            <div class="cred-role">Platform Super Admin</div>
+          </div>
+          <div class="cred-pass">SuperAdmin@123</div>
+        </div>
+      </div>
+    </div>
+
   </div>
+</div>
+
+  <script>
+    (async function findPorts(){
+      const probes = [
+        { id: 'user', preferred: 8085 },
+        { id: 'driver', preferred: 8082 },
+        { id: 'admin', preferred: 8083 },
+        { id: 'superadmin', preferred: 8084 },
+      ];
+      const maxOffset = 8;
+      function probeImage(port){
+        return new Promise((resolve)=>{
+          const img = new Image();
+          let done = false;
+          img.onload = () => { if (!done) { done = true; resolve(true); } };
+          img.onerror = () => { if (!done) { done = true; resolve(false); } };
+          img.src = `http://localhost:${port}/favicon.ico?probe=${Date.now()}`;
+          setTimeout(() => { if (!done) { done = true; resolve(false); } }, 900);
+        });
+      }
+
+      for (const p of probes) {
+        for (let port = p.preferred; port <= p.preferred + maxOffset; port++) {
+          try {
+            const ok = await probeImage(port);
+            if (ok) {
+              const iframe = document.getElementById('iframe-' + p.id);
+              const urlEl = document.getElementById('url-' + p.id);
+              if (iframe) iframe.src = `http://localhost:${port}`;
+              if (urlEl) urlEl.textContent = `localhost:${port}`;
+              break;
+            }
+          } catch (e) {
+            // continue
+          }
+        }
+      }
+    })();
+  </script>
 
 </body>
 </html>

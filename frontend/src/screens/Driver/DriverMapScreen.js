@@ -18,6 +18,7 @@ export default function DriverMapScreen({ route, navigation }) {
     const [lng, lat] = ambulanceLocation.coordinates;
     return lat && lng ? { latitude: lat, longitude: lng } : null;
   }, [ambulanceLocation]);
+  const driverLocationText = ambulanceLocation?.address || (ambCoord ? 'Driver location available' : 'Location unavailable');
 
   // Open external maps app for turn-by-turn navigation
   const openNavigation = () => {
@@ -34,13 +35,20 @@ export default function DriverMapScreen({ route, navigation }) {
     }
   };
 
-  // View pickup on OpenStreetMap (web-friendly, no API key needed)
-  const openOSMLink = () => {
-    Linking.openURL(`https://www.openstreetmap.org/?mlat=${pickupLat}&mlon=${pickupLng}#map=16/${pickupLat}/${pickupLng}`);
+  // View pickup on Google Maps
+  const openGoogleMapsLink = () => {
+    const query = `${pickupLat},${pickupLng}`;
+    const webUrl = `https://www.google.com/maps/search/?api=1&query=${query}`;
+
+    if (Platform.OS === 'android') {
+      Linking.openURL(`https://maps.google.com/?q=${query}`).catch(() => Linking.openURL(webUrl));
+    } else {
+      Linking.openURL(webUrl);
+    }
   };
 
-  // Static map image URL from OpenStreetMap
-  const staticMapUrl = `https://staticmap.openstreetmap.de/staticmap.php?center=${pickupLat},${pickupLng}&zoom=15&size=600x300&markers=${pickupLat},${pickupLng},red-pushpin&maptype=mapnik`;
+  // Google Maps static preview URL (requires API key for a true static map render)
+  const staticMapUrl = `https://www.google.com/maps?q=${pickupLat},${pickupLng}&z=15&output=embed`;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -56,26 +64,50 @@ export default function DriverMapScreen({ route, navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Map Preview — uses OpenStreetMap static image (works everywhere, no API key) */}
-        <TouchableOpacity style={styles.mapCard} onPress={openOSMLink} activeOpacity={0.85}>
+        {/* Map Preview — opens Google Maps */}
+        <TouchableOpacity style={styles.mapCard} onPress={openGoogleMapsLink} activeOpacity={0.85}>
           <View style={styles.mapImageWrapper}>
             {Platform.OS === 'web' ? (
-              <img src={staticMapUrl} alt="Pickup Map" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 16 }} />
+              <iframe
+                title="Google Maps pickup location"
+                src={staticMapUrl}
+                style={{ width: '100%', height: '100%', border: 0, borderRadius: 16 }}
+                allowFullScreen
+              />
             ) : (
               <View style={styles.mapPlaceholder}>
                 <MaterialCommunityIcons name="map-marker-radius" size={48} color={Colors.primary} />
-                <Text style={styles.mapPlaceholderText}>Tap to view on map</Text>
+                <Text style={styles.mapPlaceholderText}>Tap to open Google Maps</Text>
               </View>
             )}
           </View>
           <View style={styles.mapOverlay}>
             <MaterialCommunityIcons name="open-in-new" size={14} color={Colors.white} />
-            <Text style={styles.mapOverlayText}>View on OpenStreetMap</Text>
+            <Text style={styles.mapOverlayText}>View on Google Maps</Text>
           </View>
         </TouchableOpacity>
 
         {/* Location Details Card */}
         <View style={[styles.card, Shadow.medium]}>
+          {/* Driver current position */}
+          {ambulanceLocation ? (
+            <>
+              <View style={styles.locationRow}>
+                <View style={[styles.locationDot, { backgroundColor: '#E53935' }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.locationLabel}>DRIVER CURRENT LOCATION</Text>
+                  <Text style={styles.locationText}>{driverLocationText}</Text>
+                  {ambCoord ? (
+                    <Text style={styles.coordText}>
+                      {ambCoord.latitude.toFixed(5)}, {ambCoord.longitude.toFixed(5)}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+              <View style={styles.locationDivider} />
+            </>
+          ) : null}
+
           {/* Pickup */}
           <View style={styles.locationRow}>
             <View style={[styles.locationDot, { backgroundColor: Colors.primary }]} />
@@ -110,7 +142,7 @@ export default function DriverMapScreen({ route, navigation }) {
             <InfoItem icon="account" label="Name" value={booking.patientDetails?.name || booking.user?.name || 'N/A'} />
             {booking.patientDetails?.age ? <InfoItem icon="calendar" label="Age" value={`${booking.patientDetails.age} yrs`} /> : null}
             {booking.user?.phone ? <InfoItem icon="phone" label="Phone" value={booking.user.phone} /> : null}
-            <InfoItem icon="ambulance" label="Emergency" value={booking.emergencyType || 'General'} />
+
             {booking.patientDetails?.bloodGroup && booking.patientDetails.bloodGroup !== 'unknown' ? (
               <InfoItem icon="water" label="Blood" value={booking.patientDetails.bloodGroup} color="#E53935" />
             ) : null}

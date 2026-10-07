@@ -6,6 +6,7 @@ import { ActivityIndicator, View }    from 'react-native';
 import { MaterialCommunityIcons }     from '@expo/vector-icons';
 
 import { loadUser }  from '../store/authSlice';
+import { loadConfig } from '../store/configSlice';
 import { Colors }    from '../theme';
 
 import LoginScreen              from '../screens/Auth/LoginScreen';
@@ -22,6 +23,7 @@ import DriverDashboardScreen    from '../screens/Driver/DriverDashboardScreen';
 import DriverMapScreen          from '../screens/Driver/DriverMapScreen';
 import AdminDashboardScreen     from '../screens/Admin/AdminDashboardScreen';
 import HelpSupportScreen        from '../screens/Help/HelpSupportScreen';
+import SuperAdminNavigator      from './SuperAdminNavigator';
 
 const Stack = createNativeStackNavigator();
 const Tab   = createBottomTabNavigator();
@@ -196,6 +198,7 @@ export default function AppNavigator() {
 
   useEffect(() => {
     dispatch(loadUser());
+    dispatch(loadConfig());
   }, [dispatch]);
 
   if (!isInitialised) {
@@ -207,6 +210,7 @@ export default function AppNavigator() {
   }
 
   if (!user) return <AuthStack />;
+  if (user.role === 'superadmin') return <SuperAdminNavigator />;
   if (user.role === 'admin')  return <AdminStack />;
   if (user.role === 'driver') return <DriverStack />;
   return <AppStack />;

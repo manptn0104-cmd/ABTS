@@ -188,10 +188,6 @@ export default function DriverDashboardScreen() {
     <View style={[styles.card, Shadow.medium]}>
       {/* Header */}
       <View style={styles.cardHeader}>
-        <View style={styles.emergencyBadge}>
-          <MaterialCommunityIcons name="ambulance" size={14} color={Colors.white} />
-          <Text style={styles.emergencyText}>{item.emergencyType?.toUpperCase() || 'GENERAL'}</Text>
-        </View>
         <View style={[styles.statusBadge, { backgroundColor: STATUS_COLOR[item.status] + '22', borderColor: STATUS_COLOR[item.status] }]}>
           <Text style={[styles.statusText, { color: STATUS_COLOR[item.status] }]}>{STATUS_LABEL[item.status]}</Text>
         </View>

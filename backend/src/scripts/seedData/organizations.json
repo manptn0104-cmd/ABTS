@@ -1,0 +1,30 @@
+[
+  {
+    "name": "City Ambulance Services",
+    "email": "contact@cityambulance.com",
+    "phone": "9800001111",
+    "city": "Bengaluru",
+    "state": "Karnataka",
+    "address": "12, MG Road, Bengaluru - 560001",
+    "gstNumber": "29ABCDE1234F1Z5",
+    "registrationNumber": "KA-AMB-2020-001",
+    "contactPerson": "Rajesh Kumar",
+    "website": "https://cityambulance.com",
+    "status": "active",
+    "subscriptionPlanName": "Premium"
+  },
+  {
+    "name": "LifeLine Emergency Care",
+    "email": "info@lifelinecare.in",
+    "phone": "9800002222",
+    "city": "Mumbai",
+    "state": "Maharashtra",
+    "address": "45, Bandra West, Mumbai - 400050",
+    "gstNumber": "27FGHIJ5678K2L6",
+    "registrationNumber": "MH-AMB-2019-007",
+    "contactPerson": "Priya Mehta",
+    "website": "https://lifelinecare.in",
+    "status": "active",
+    "subscriptionPlanName": "Standard"
+  }
+]

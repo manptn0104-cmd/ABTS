@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Basic",
+    "description": "Entry-level plan for small operators",
+    "price": 2999,
+    "duration": 30,
+    "maxAmbulances": 5,
+    "maxDrivers": 10,
+    "features": ["GPS Tracking", "Booking Management", "Basic Reports"],
+    "isActive": true,
+    "gstPercent": 18,
+    "trialDays": 7
+  },
+  {
+    "name": "Standard",
+    "description": "Mid-tier plan for growing organizations",
+    "price": 7999,
+    "duration": 90,
+    "maxAmbulances": 20,
+    "maxDrivers": 40,
+    "features": ["GPS Tracking", "Booking Management", "Advanced Reports", "Priority Support", "Driver App"],
+    "isActive": true,
+    "gstPercent": 18,
+    "trialDays": 14
+  },
+  {
+    "name": "Premium",
+    "description": "Full-featured plan for large fleets",
+    "price": 19999,
+    "duration": 365,
+    "maxAmbulances": -1,
+    "maxDrivers": -1,
+    "features": [
+      "GPS Tracking", "Booking Management", "Advanced Reports",
+      "24/7 Priority Support", "Driver App", "Patient History",
+      "Multi-Organization", "API Access"
+    ],
+    "isActive": true,
+    "gstPercent": 18,
+    "trialDays": 30
+  }
+]

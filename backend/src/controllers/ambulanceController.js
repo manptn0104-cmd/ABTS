@@ -9,14 +9,12 @@ exports.getAmbulances = async (req, res, next) => {
       maxDistance = 20000,
       type, available,
       minPrice, maxPrice,
-      emergencyType,
       page = 1, limit = 20,
     } = req.query;
 
     const filterQuery = {};
     if (available !== 'all') filterQuery.isAvailable = available !== 'false';
     if (type) filterQuery.type = type;
-    if (emergencyType) filterQuery.specializations = emergencyType;
 
     ['oxygen', 'saline', 'stretcher', 'nurse', 'doctor', 'defibrillator', 'ventilator'].forEach((f) => {
       if (req.query[f] === 'true') filterQuery[`facilities.${f}`] = true;

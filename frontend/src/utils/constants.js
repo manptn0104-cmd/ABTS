@@ -1,17 +1,7 @@
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:5001/api';
-export const SOCKET_URL   = process.env.EXPO_PUBLIC_SOCKET_URL   || 'http://localhost:5001';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
+export const SOCKET_URL   = process.env.EXPO_PUBLIC_SOCKET_URL   || 'http://localhost:5000';
 
-export const GOOGLE_MAPS_API_KEY = 'YOUR_GOOGLE_MAPS_API_KEY';
-
-export const EMERGENCY_TYPES = [
-  { label: 'Accident', value: 'accident', icon: 'car-brake-alert' },
-  { label: 'Cardiac', value: 'cardiac', icon: 'heart-pulse' },
-  { label: 'Respiratory', value: 'respiratory', icon: 'lungs' },
-  { label: 'Trauma', value: 'trauma', icon: 'medical-bag' },
-  { label: 'Maternity', value: 'maternity', icon: 'baby-carriage' },
-  { label: 'General', value: 'general', icon: 'ambulance' },
-  { label: 'Other', value: 'other', icon: 'dots-horizontal' },
-];
+export const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 
 export const FACILITIES = [
   { key: 'oxygen', label: 'Oxygen', icon: 'weather-windy' },
@@ -29,6 +19,7 @@ export const AMBULANCE_TYPES = [
   { label: 'Advanced', value: 'advanced', color: '#1E88E5' },
   { label: 'ICU', value: 'icu', color: '#E53935' },
   { label: 'Neonatal', value: 'neonatal', color: '#8E24AA' },
+  { label: 'Bike', value: 'bike', color: '#FF6F00' },
 ];
 
 export const BOOKING_STATUS = {

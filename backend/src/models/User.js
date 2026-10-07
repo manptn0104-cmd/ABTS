@@ -30,7 +30,7 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ['user', 'driver', 'admin'],
+      enum: ['user', 'driver', 'admin', 'superadmin'],
       default: 'user',
     },
     isVerified: {
@@ -49,6 +49,11 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    isActive:        { type: Boolean, default: true },
+    isBlocked:       { type: Boolean, default: false },
+    licenseVerified: { type: Boolean, default: false },
+    isOnline:        { type: Boolean, default: false },
+    organization:    { type: require('mongoose').Schema.Types.ObjectId, ref: 'Organization', default: null },
   },
   { timestamps: true }
 );

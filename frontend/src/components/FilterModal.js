@@ -6,12 +6,13 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
 import { setFilters, resetFilters } from '../store/ambulanceSlice';
 import { Colors, Spacing, BorderRadius, Shadow } from '../theme';
-import { FACILITIES, AMBULANCE_TYPES } from '../utils/constants';
+import { AMBULANCE_TYPES, FACILITIES } from '../utils/constants';
 import Button from './common/Button';
 
 export default function FilterModal({ visible, onClose, onApply }) {
   const dispatch       = useDispatch();
   const savedFilters   = useSelector((s) => s.ambulance.filters);
+  const { facilities, ambulanceTypes } = useSelector((s) => s.config);
   const [local, setLocal] = useState({ ...savedFilters });
 
   const toggleFacility = (key) =>

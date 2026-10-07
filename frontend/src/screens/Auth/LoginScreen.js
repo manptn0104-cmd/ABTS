@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  KeyboardAvoidingView, Platform, Alert,
+  KeyboardAvoidingView, Platform, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -26,6 +26,10 @@ export default function LoginScreen({ navigation }) {
   const [phoneError, setPhoneError] = useState('');
   const [otpSending, setOtpSending] = useState(false);
 
+  // Quick-login state
+  const [demoOpen,    setDemoOpen]    = useState(false);
+  const [quickLoading,setQuickLoading]= useState(null); // key of role being logged in
+
   const validatePassword = () => {
     const e = {};
     if (!form.email.trim())                    e.email    = 'Email is required';
@@ -48,6 +52,27 @@ export default function LoginScreen({ navigation }) {
     }
   };
 
+  const DEMO_ACCOUNTS = [
+    { key: 'superadmin', label: 'Super Admin', icon: 'shield-crown',    color: '#6A1B9A', email: 'superadmin@abts.com', password: 'SuperAdmin@123' },
+    { key: 'admin',      label: 'Admin',       icon: 'shield-account',  color: '#B71C1C', email: 'admin@abts.com',      password: 'Admin@123'      },
+    { key: 'user',       label: 'Patient',     icon: 'account-heart',   color: '#1565C0', email: 'user@abts.com',       password: 'User@123'       },
+    { key: 'driver',     label: 'Driver',      icon: 'steering',         color: '#2E7D32', email: 'driver1@abts.com',    password: 'Driver@123'     },
+  ];
+
+  const quickLogin = async ({ key, email, password }) => {
+    setQuickLoading(key);
+    dispatch(clearError());
+    const result = await dispatch(login({ email, password }));
+    if (login.rejected.match(result)) {
+      if (Platform.OS === 'web') {
+        window.alert('Quick Login Failed\n\n' + result.payload);
+      } else {
+        Alert.alert('Quick Login Failed', result.payload);
+      }
+    }
+    setQuickLoading(null);
+  };
+
   const handleSendOtp = async () => {
     const cleaned = phone.replace(/\D/g, '');
     if (!cleaned || cleaned.length < 10) {
@@ -58,7 +83,7 @@ export default function LoginScreen({ navigation }) {
     setOtpSending(true);
     try {
       const res = await fetch(
-        (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5001') + '/api/auth/send-otp',
+        (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000') + '/api/auth/send-otp',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -181,6 +206,44 @@ export default function LoginScreen({ navigation }) {
               <Text style={styles.registerLink}>Register</Text>
             </TouchableOpacity>
           </View>
+
+          {/* ── Demo Quick Login ── */}
+          <TouchableOpacity style={styles.demoToggle} onPress={() => setDemoOpen((o) => !o)} activeOpacity={0.8}>
+            <MaterialCommunityIcons name="account-multiple" size={16} color="rgba(255,255,255,0.9)" />
+            <Text style={styles.demoToggleText}>Demo Accounts (Quick Login)</Text>
+            <MaterialCommunityIcons
+              name={demoOpen ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color="rgba(255,255,255,0.9)"
+            />
+          </TouchableOpacity>
+
+          {demoOpen && (
+            <View style={styles.demoBox}>
+              {DEMO_ACCOUNTS.map(({ key, label, icon, color, email, password }) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[styles.demoBtn, { borderLeftColor: color }]}
+                  onPress={() => quickLogin({ key, email, password })}
+                  disabled={!!quickLoading}
+                  activeOpacity={0.8}
+                >
+                  <View style={[styles.demoIconBox, { backgroundColor: color }]}>
+                    {quickLoading === key
+                      ? <ActivityIndicator size={16} color="#fff" />
+                      : <MaterialCommunityIcons name={icon} size={16} color="#fff" />
+                    }
+                  </View>
+                  <View style={styles.demoCreds}>
+                    <Text style={styles.demoRole}>{label}</Text>
+                    <Text style={styles.demoEmail}>{email}</Text>
+                  </View>
+                  <MaterialCommunityIcons name="login" size={18} color={color} />
+                </TouchableOpacity>
+              ))}
+              <Text style={styles.demoNote}>Tap any row to instantly log in as that role.</Text>
+            </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -229,4 +292,15 @@ const styles = StyleSheet.create({
   registerRow: { flexDirection: 'row', justifyContent: 'center', marginTop: Spacing.xl },
   registerText:{ fontSize: 14, color: 'rgba(255,255,255,0.9)' },
   registerLink:{ fontSize: 14, color: Colors.white, fontWeight: '800' },
+
+  // Demo quick-login
+  demoToggle:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 20, paddingVertical: 10 },
+  demoToggleText:  { fontSize: 13, color: 'rgba(255,255,255,0.9)', fontWeight: '600' },
+  demoBox:         { backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: 16, padding: 12, marginTop: 4, gap: 8 },
+  demoBtn:         { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#fff', borderRadius: 10, padding: 12, borderLeftWidth: 4, elevation: 1 },
+  demoIconBox:     { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  demoCreds:       { flex: 1 },
+  demoRole:        { fontSize: 13, fontWeight: '700', color: '#212121' },
+  demoEmail:       { fontSize: 11, color: '#757575', marginTop: 1 },
+  demoNote:        { fontSize: 11, color: '#9E9E9E', textAlign: 'center', marginTop: 4 },
 });

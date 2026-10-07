@@ -1,0 +1,35 @@
+[
+  {
+    "vehicleNumber": "BA-001",
+    "driverEmail":   "bikedriver1@abts.com",
+    "driverName":    "Raj Kumar",
+    "driverPhone":   "9811001100",
+    "driverLicense": "KA0120220011111",
+    "driverPassword":"BikeDriver@123",
+    "facilities": { "firstAid": true, "emergencyKit": true, "oxygen": true, "basicLifeSupport": true, "aed": false },
+    "currentLocation": { "type": "Point", "coordinates": [77.5910, 12.9700], "address": "Brigade Road, Bengaluru" },
+    "rating": { "average": 4.8, "count": 42 }
+  },
+  {
+    "vehicleNumber": "BA-002",
+    "driverEmail":   "bikedriver2@abts.com",
+    "driverName":    "Sunil Patil",
+    "driverPhone":   "9811002200",
+    "driverLicense": "KA0220210022222",
+    "driverPassword":"BikeDriver@123",
+    "facilities": { "firstAid": true, "emergencyKit": true, "oxygen": false, "basicLifeSupport": true, "aed": true },
+    "currentLocation": { "type": "Point", "coordinates": [77.6050, 12.9600], "address": "Indiranagar, Bengaluru" },
+    "rating": { "average": 4.6, "count": 28 }
+  },
+  {
+    "vehicleNumber": "BA-003",
+    "driverEmail":   "bikedriver3@abts.com",
+    "driverName":    "Pradeep Singh",
+    "driverPhone":   "9811003300",
+    "driverLicense": "KA0320230033333",
+    "driverPassword":"BikeDriver@123",
+    "facilities": { "firstAid": true, "emergencyKit": true, "oxygen": true, "basicLifeSupport": false, "aed": false },
+    "currentLocation": { "type": "Point", "coordinates": [77.5750, 12.9800], "address": "Rajajinagar, Bengaluru" },
+    "rating": { "average": 4.7, "count": 35 }
+  }
+]

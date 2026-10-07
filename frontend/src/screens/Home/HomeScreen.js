@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TextInput, TouchableOpacity,
   ScrollView, FlatList, Alert, ActivityIndicator, Platform,
@@ -12,8 +12,10 @@ import { useLocation } from '../../hooks/useLocation';
 import MapComponent from '../../components/MapComponent';
 import AmbulanceCard from '../../components/AmbulanceCard';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+import BikeRecommendationBanner from '../../components/BikeRecommendationBanner';
+import { getNearbyBikeAmbulances, getBikeRecommendation, assignBikeAmbulance } from '../../api/bikeAmbulances';
 import { Colors, Spacing, Shadow, BorderRadius } from '../../theme';
-import { DEFAULT_REGION, EMERGENCY_TYPES, FACILITIES } from '../../utils/constants';
+import { API_BASE_URL, DEFAULT_REGION, FACILITIES } from '../../utils/constants';
 
 export default function HomeScreen({ navigation }) {
   const dispatch = useDispatch();
@@ -32,6 +34,12 @@ export default function HomeScreen({ navigation }) {
   const [mapRegion, setMapRegion]     = useState(DEFAULT_REGION);
   const [showMap, setShowMap]         = useState(true);
   const [selectedFacilities, setSelectedFacilities] = useState([]);
+
+  // Bike Ambulance state
+  const [bikeRec, setBikeRec] = useState(null);
+  const [bikeRecDismissed, setBikeRecDismissed] = useState(false);
+  const [requestingBike, setRequestingBike] = useState(false);
+  const [nearbyBikes, setNearbyBikes] = useState([]);
 
   const toggleFacility = (id) => {
     setSelectedFacilities((prev) =>
@@ -53,55 +61,92 @@ export default function HomeScreen({ navigation }) {
   // The effective location: manual selection takes priority over GPS
   const effectiveLocation = manualLocation || location;
 
-  // Fetch address suggestions from Nominatim (OpenStreetMap)
+  const fetchPlaceDetails = useCallback(async (placeId) => {
+    if (!placeId) return null;
+
+    const detailsUrl = `${API_BASE_URL}/maps/details?place_id=${encodeURIComponent(placeId)}`;
+    const res = await fetch(detailsUrl);
+    const data = await res.json();
+
+    if (data.status !== 'OK' || !data.result?.geometry?.location) return null;
+
+    return {
+      label: data.result.formatted_address || data.result.name,
+      shortLabel: data.result.formatted_address || data.result.name,
+      lat: data.result.geometry.location.lat,
+      lng: data.result.geometry.location.lng,
+    };
+  }, []);
+
   const fetchSuggestions = useCallback(async (query) => {
-    if (!query || query.length < 3) { setSuggestions([]); return; }
+    const trimmed = (query || '').trim();
+    if (!trimmed || trimmed.length < 2) { setSuggestions([]); return; }
     setSugLoading(true);
+
     try {
-      // Bug #8 fix: bias results toward the user's current location
       const loc = effectiveLocation || { latitude: 12.9716, longitude: 77.5946 };
-      const lat = loc.coords ? loc.coords.latitude  : loc.latitude;
+      const lat = loc.coords ? loc.coords.latitude : loc.latitude;
       const lng = loc.coords ? loc.coords.longitude : loc.longitude;
-      const viewbox = `${lng - 0.5},${lat + 0.5},${lng + 0.5},${lat - 0.5}`;
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=6&countrycodes=in&viewbox=${viewbox}&bounded=0`;
-      const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+
+      const autocompleteUrl = `${API_BASE_URL}/maps/autocomplete?input=${encodeURIComponent(trimmed)}&lat=${lat}&lng=${lng}`;
+      const res = await fetch(autocompleteUrl);
       const data = await res.json();
-      setSuggestions(data.map((r) => ({
-        label:     r.display_name,
-        shortLabel: [r.address?.road, r.address?.suburb, r.address?.city || r.address?.town || r.address?.village]
-                      .filter(Boolean).join(', ') || r.display_name,
-        lat: parseFloat(r.lat),
-        lng: parseFloat(r.lon),
-      })));
-    } catch (_) {
+
+      if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+        throw new Error(data.status || 'Google Places autocomplete failed');
+      }
+
+      const mapped = (data.predictions || []).map((item) => ({
+        key: item.place_id,
+        label: item.description,
+        shortLabel: item.structured_formatting?.main_text || item.description,
+        placeId: item.place_id,
+      }));
+
+      setSuggestions(mapped);
+    } catch (err) {
+      console.warn('Google Places search error:', err);
       setSuggestions([]);
     } finally {
       setSugLoading(false);
     }
-  }, []);
+  }, [effectiveLocation]);
 
   const handleSearchTextChange = (text) => {
-    setSearchText(text);
+    const nextText = text || '';
+    setSearchText(nextText);
+
+    if (nextText.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      clearTimeout(debounceRef.current);
+      return;
+    }
+
     setShowSuggestions(true);
     clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => fetchSuggestions(text), 400);
+    debounceRef.current = setTimeout(() => fetchSuggestions(nextText), 300);
   };
 
-  const handleSelectSuggestion = (s) => {
-    const newLoc = { latitude: s.lat, longitude: s.lng };
+  const handleSelectSuggestion = async (s) => {
+    let resolved = { ...s };
+
+    if (s.placeId) {
+      const details = await fetchPlaceDetails(s.placeId);
+      if (details) {
+        resolved = { ...resolved, ...details };
+      }
+    }
+
+    const newLoc = { latitude: resolved.lat, longitude: resolved.lng };
     setManualLocation(newLoc); // Lock in the user's choice (GPS won't overwrite this)
-    setSearchText(s.shortLabel);
+    setSearchText(resolved.shortLabel || resolved.label || s.shortLabel || s.label);
     setSuggestions([]);
     setShowSuggestions(false);
     setIsFocused(false);
     setLocation(newLoc);
-    setAddress(s.shortLabel);
-    setMapRegion({ latitude: s.lat, longitude: s.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 });
-    // Fetch ambulances for the manually selected location
-    dispatch(fetchAmbulances({
-      lat: s.lat, lng: s.lng, maxDistance: 50000, available: 'true', limit: 20,
-      ...buildFacilityParams(selectedFacilities),
-    }));
+    setAddress(resolved.shortLabel || resolved.label || s.shortLabel || s.label);
+    setMapRegion({ latitude: resolved.lat, longitude: resolved.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 });
   };
 
   const handleUseCurrentLocation = () => {
@@ -113,69 +158,166 @@ export default function HomeScreen({ navigation }) {
 
   const handleFocus = () => {
     setIsFocused(true);
-    if (searchText.length >= 3) {
+    if (searchText.trim().length >= 2) {
       setShowSuggestions(true);
+      clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => fetchSuggestions(searchText), 200);
     }
   };
 
   const handleBlur = () => {
     setTimeout(() => {
+      // If the user typed a valid search and there are suggestions, keep the dropdown visible
+      // instead of silently forcing the first result to be selected on blur.
+      if (searchText.trim().length >= 2 && suggestions.length > 0) {
+        setShowSuggestions(true);
+        setIsFocused(true);
+        return;
+      }
       setShowSuggestions(false);
       setIsFocused(false);
     }, 200);
   };
 
-  // Re-fetch ambulances when facility filters change (only if we already have a location)
+  // Fetch ambulances based on location and filters
   useEffect(() => {
-    if (!effectiveLocation) return;
-    const lat = effectiveLocation.coords ? effectiveLocation.coords.latitude : effectiveLocation.latitude;
-    const lng = effectiveLocation.coords ? effectiveLocation.coords.longitude : effectiveLocation.longitude;
-
-    dispatch(fetchAmbulances({
-      lat,
-      lng,
-      maxDistance: 50000,
-      available: 'true',
-      limit: 20,
-      ...buildFacilityParams(selectedFacilities),
-    }));
-  }, [selectedFacilities]);
-
-  // Re-fetch with actual GPS when available (only if user hasn't manually selected a location)
-  useEffect(() => {
-    if (!location || manualLocation) return;
-    setMapRegion({
-      latitude:       location.latitude,
-      longitude:      location.longitude,
-      latitudeDelta:  0.05,
-      longitudeDelta: 0.05,
-    });
-    dispatch(fetchAmbulances({
-      lat: location.latitude,
-      lng: location.longitude,
-      maxDistance: 50000,
-      available: 'true',
-      limit: 20,
-      ...buildFacilityParams(selectedFacilities),
-    }));
-  }, [location, dispatch, manualLocation, selectedFacilities]);
+    const lat = effectiveLocation?.coords?.latitude  ?? effectiveLocation?.latitude;
+    const lng = effectiveLocation?.coords?.longitude ?? effectiveLocation?.longitude;
+    const params = { available: 'true', limit: 20, ...buildFacilityParams(selectedFacilities) };
+    
+    // Include location if available for accurate distance calculation
+    if (lat && lng) { 
+      console.log('Fetching ambulances for location:', { lat, lng });
+      params.lat = lat; 
+      params.lng = lng; 
+      params.maxDistance = 50000; 
+      
+      // Update map region when location is available
+      setMapRegion({
+        latitude:       lat,
+        longitude:      lng,
+        latitudeDelta:  0.05,
+        longitudeDelta: 0.05,
+      });
+    }
+    
+    dispatch(fetchAmbulances(params));
+  }, [manualLocation?.latitude, manualLocation?.longitude, location?.latitude, location?.longitude, selectedFacilities, dispatch]);
 
   // Sync GPS address to search text (only if user hasn't manually selected)
   useEffect(() => {
     if (address && !manualLocation) setSearchText(address);
   }, [address, manualLocation]);
 
+  // Fetch nearby bike ambulances based on pickup location
+  useEffect(() => {
+    const lat = effectiveLocation?.coords?.latitude  ?? effectiveLocation?.latitude;
+    const lng = effectiveLocation?.coords?.longitude ?? effectiveLocation?.longitude;
+    
+    // Only fetch if we have a valid location
+    if (!lat || !lng) {
+      setNearbyBikes([]);
+      return;
+    }
+    
+    console.log('Fetching bike ambulances for location:', { lat, lng });
+    const params = { lat, lng, maxDistance: 5000, limit: 10 };
+    (async () => {
+      try {
+        const res = await getNearbyBikeAmbulances(params);
+        if (res.data?.bikes) {
+          const mapped = res.data.bikes.map((b) => ({ 
+            ...b, 
+            isBike: true, 
+            type: 'bike',
+            basePrice: b.basePrice || 200, // Default base price for bike ambulances
+          }));
+          setNearbyBikes(mapped);
+        } else setNearbyBikes([]);
+      } catch (err) {
+        console.warn('getNearbyBikeAmbulances error', err);
+        setNearbyBikes([]);
+      }
+    })();
+  }, [manualLocation?.latitude, manualLocation?.longitude, location?.latitude, location?.longitude]);
+
+  // Fetch bike recommendation based on pickup location
+  useEffect(() => {
+    if (isLoading || bikeRecDismissed) return;
+    
+    const lat = effectiveLocation?.coords?.latitude  ?? effectiveLocation?.latitude;
+    const lng = effectiveLocation?.coords?.longitude ?? effectiveLocation?.longitude;
+    
+    // Only fetch recommendation if we have a valid location
+    if (!lat || !lng) {
+      setBikeRec(null);
+      return;
+    }
+    
+    // Best ETA from regular ambulances
+    const bestETA = ambulances.length > 0
+      ? Math.min(...ambulances.map((a) => a.estimatedArrivalMin ?? 9999))
+      : undefined;
+      
+    (async () => {
+      try {
+        const res = await getBikeRecommendation({ 
+          lat, 
+          lng, 
+          ...(bestETA && bestETA < 9999 ? { regularETA: bestETA } : {}) 
+        });
+        if (res.data?.recommended) setBikeRec(res.data);
+        else setBikeRec(null);
+      } catch (err) {
+        console.warn('getBikeRecommendation error', err);
+      }
+    })();
+  }, [isLoading, ambulances.length, manualLocation?.latitude, manualLocation?.longitude, location?.latitude, location?.longitude, bikeRecDismissed]);
+
   const handleSearch = useCallback(() => {
     navigation.navigate('AmbulanceList', { location: effectiveLocation, searchText, selectedFacilities });
   }, [navigation, effectiveLocation, searchText, selectedFacilities]);
 
-  const handleQuickBook = () => {
-    navigation.navigate('AmbulanceList', { 
-      location: effectiveLocation || { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude }, 
-      searchText,
-      selectedFacilities 
-    });
+  const handleRequestBike = async () => {
+    if (!bikeRec?.bikeAmbulance) return;
+    setRequestingBike(true);
+    try {
+      const lat = effectiveLocation?.coords?.latitude  ?? effectiveLocation?.latitude  ?? DEFAULT_REGION.latitude;
+      const lng = effectiveLocation?.coords?.longitude ?? effectiveLocation?.longitude ?? DEFAULT_REGION.longitude;
+      const res = await assignBikeAmbulance({
+        bikeAmbulanceId:       bikeRec.bikeAmbulance._id,
+        pickupCoordinates:     [lng, lat],
+        pickupAddress:         address || '',
+        regularAmbulanceETA:   bikeRec.regularAmbulanceETA,
+        bikeAmbulanceETA:      bikeRec.bikeETA,
+        distanceKm:            bikeRec.bikeDistanceKm,
+        recommendationReasons: bikeRec.reasons,
+      });
+      if (res.data?.success) {
+        setBikeRec(null);
+        if (Platform.OS === 'web') {
+          window.alert(`✅ Bike Ambulance ${bikeRec.bikeAmbulance.vehicleNumber} assigned!\nETA: ${bikeRec.bikeETA} minutes\nDriver: ${bikeRec.bikeAmbulance.driverName}`);
+        } else {
+          Alert.alert(
+            '🏍️ Bike Ambulance Assigned',
+            `${bikeRec.bikeAmbulance.vehicleNumber} is on its way!\nDriver: ${bikeRec.bikeAmbulance.driverName}\nETA: ${bikeRec.bikeETA} min`,
+          );
+        }
+      }
+    } catch (e) {
+      const msg = e?.response?.data?.message || 'Failed to assign bike ambulance.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Error', msg);
+    } finally {
+      setRequestingBike(false);
+    }
   };
+
+  // Merge regular ambulances with nearby bikes
+  const mergedAmbulances = useMemo(() => {
+    return [...ambulances, ...nearbyBikes];
+  }, [ambulances, nearbyBikes]);
+
 
   const handleAmbulancePress = (amb) => {
     navigation.navigate('AmbulanceDetails', { ambulanceId: amb._id, location: effectiveLocation, searchText, selectedFacilities });
@@ -187,7 +329,7 @@ export default function HomeScreen({ navigation }) {
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>Hello, {user?.name?.split(' ')[0]} 👋</Text>
-          <Text style={styles.subtitle}>Find emergency help nearby</Text>
+          <Text style={styles.subtitle}>Find ambulance help nearby</Text>
         </View>
         <TouchableOpacity
           style={styles.notifBtn}
@@ -314,29 +456,6 @@ export default function HomeScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Emergency type quick selector */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Emergency Type</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.typeScroll}>
-            {EMERGENCY_TYPES.map((t) => (
-              <TouchableOpacity
-                key={t.value}
-                style={styles.typeChip}
-                onPress={() => navigation.navigate('AmbulanceList', { location: effectiveLocation, emergencyType: t.value, searchText, selectedFacilities })}
-              >
-                <MaterialCommunityIcons name={t.icon} size={22} color={Colors.primary} />
-                <Text style={styles.typeLabel}>{t.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* Quick Book Button */}
-        <TouchableOpacity style={styles.quickBookBtn} onPress={handleQuickBook} activeOpacity={0.85}>
-          <MaterialCommunityIcons name="ambulance" size={26} color={Colors.white} />
-          <Text style={styles.quickBookText}>🚨  Quick Emergency Book</Text>
-        </TouchableOpacity>
-
         {/* Map */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -361,8 +480,8 @@ export default function HomeScreen({ navigation }) {
               ) : (
                 <MapComponent
                   region={mapRegion}
-                  userLocation={location}
-                  ambulances={ambulances}
+                  userLocation={effectiveLocation}
+                  ambulances={mergedAmbulances}
                   onAmbulancePress={handleAmbulancePress}
                   style={styles.map}
                 />
@@ -374,9 +493,20 @@ export default function HomeScreen({ navigation }) {
         {/* Nearby ambulance list */}
         <View style={styles.section}>
           {!showMap && <Text style={styles.sectionTitle}>Available Ambulances</Text>}
+          
+          {/* Bike Ambulance Recommendation Banner */}
+          {bikeRec && !bikeRecDismissed && (
+            <BikeRecommendationBanner
+              recommendation={bikeRec}
+              onRequest={handleRequestBike}
+              onDismiss={() => setBikeRecDismissed(true)}
+              requesting={requestingBike}
+            />
+          )}
+
           {isLoading ? (
             <LoadingSpinner message="Finding ambulances near you…" />
-          ) : ambulances.length === 0 ? (
+          ) : mergedAmbulances.length === 0 ? (
             <View style={styles.emptyBox}>
               <Text style={styles.emptyEmoji}>🔍</Text>
               <Text style={styles.emptyText}>No ambulances found nearby</Text>
@@ -390,19 +520,19 @@ export default function HomeScreen({ navigation }) {
             </View>
           ) : (
             <>
-              {ambulances.slice(0, 3).map((amb) => (
+              {mergedAmbulances.slice(0, 3).map((amb) => (
                 <AmbulanceCard
                   key={amb._id}
                   ambulance={amb}
                   onPress={() => handleAmbulancePress(amb)}
                 />
               ))}
-              {ambulances.length > 3 && (
+              {mergedAmbulances.length > 3 && (
                 <TouchableOpacity
                   style={styles.viewAllBtn}
-                  onPress={() => navigation.navigate('AmbulanceList', { location, selectedFacilities })}
+                  onPress={() => navigation.navigate('AmbulanceList', { location: effectiveLocation, selectedFacilities, limit: 100 })}
                 >
-                  <Text style={styles.viewAllText}>View all {ambulances.length} ambulances →</Text>
+                  <Text style={styles.viewAllText}>View all {mergedAmbulances.length} ambulances →</Text>
                 </TouchableOpacity>
               )}
             </>
@@ -430,10 +560,12 @@ const styles = StyleSheet.create({
   notifBtn: { padding: 4 },
   body:     { flex: 1, backgroundColor: Colors.background },
   searchWrapper: {
+    position: 'relative',
     backgroundColor: Colors.primary,
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.md,
     paddingTop: Spacing.xs,
+    zIndex: 20,
   },
   searchBar: {
     flexDirection: 'row',
@@ -464,19 +596,6 @@ const styles = StyleSheet.create({
     ...Shadow.light,
   },
   typeLabel: { fontSize: 11, color: Colors.text, fontWeight: '600', marginTop: 4, textAlign: 'center' },
-  quickBookBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.lg,
-    backgroundColor: Colors.error,
-    borderRadius: BorderRadius.xl,
-    paddingVertical: Spacing.md,
-    ...Shadow.medium,
-  },
-  quickBookText: { fontSize: 17, fontWeight: '800', color: Colors.white, letterSpacing: 0.5 },
   mapContainer:  { height: 260, borderRadius: BorderRadius.xl, overflow: 'hidden', ...Shadow.medium },
   map:           { flex: 1 },
   emptyBox:      { alignItems: 'center', padding: Spacing.xl },

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Alert,
+  View, Text, StyleSheet, ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,7 +19,7 @@ export default function AmbulanceDetailsScreen({ route, navigation }) {
 
   useEffect(() => {
     dispatch(fetchAmbulanceById(ambulanceId));
-    return () => dispatch(clearSelected());
+    // Don't clear selected on unmount — BookingConfirmation reads it from Redux
   }, [ambulanceId, dispatch]);
 
   if (isLoadingDetails || !ambulance) {
@@ -29,11 +29,7 @@ export default function AmbulanceDetailsScreen({ route, navigation }) {
   const typeConfig = getAmbulanceType(ambulance.type);
 
   const handleBook = () => {
-    if (!location) {
-      Alert.alert('Location Required', 'We need your pickup location to proceed.');
-      return;
-    }
-    navigation.navigate('BookingConfirmation', { ambulance, location, searchText, selectedFacilities });
+    navigation.navigate('BookingConfirmation', { ambulanceId: ambulance._id, location: location || null, searchText, selectedFacilities });
   };
 
   const FacilityRow = ({ facility }) => {

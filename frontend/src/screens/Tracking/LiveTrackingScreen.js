@@ -30,9 +30,11 @@ export default function LiveTrackingScreen({ route, navigation }) {
   const [eta, setEta]                   = useState(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // Fetch booking data
+  // Fetch booking data only if not already loaded (avoids the isLoading flash)
   useEffect(() => {
-    dispatch(fetchBookingById(bookingId));
+    if (!booking || booking._id !== bookingId) {
+      dispatch(fetchBookingById(bookingId));
+    }
   }, [bookingId, dispatch]);
 
   // Set initial map region from booking pickup

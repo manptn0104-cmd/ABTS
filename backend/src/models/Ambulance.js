@@ -94,6 +94,11 @@ const ambulanceSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    organization:       { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', default: null },
+    status:             { type: String, enum: ['active', 'offline', 'maintenance'], default: 'active' },
+    insuranceExpiry:    { type: Date, default: null },
+    registrationExpiry: { type: Date, default: null },
+    maintenanceUntil:   { type: Date, default: null },
   },
   { timestamps: true }
 );

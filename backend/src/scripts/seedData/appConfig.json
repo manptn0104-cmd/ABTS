@@ -1,0 +1,47 @@
+{
+  "facilities": [
+    { "key": "oxygen",       "label": "Oxygen",        "icon": "weather-windy"  },
+    { "key": "saline",       "label": "Saline",         "icon": "water-outline"  },
+    { "key": "stretcher",    "label": "Stretcher",      "icon": "bed"            },
+    { "key": "nurse",        "label": "Nurse",          "icon": "account-heart"  },
+    { "key": "doctor",       "label": "Doctor",         "icon": "doctor"         },
+    { "key": "defibrillator","label": "Defibrillator",  "icon": "lightning-bolt" },
+    { "key": "ventilator",   "label": "Ventilator",     "icon": "air-filter"     },
+    { "key": "cctvCamera",   "label": "CCTV Camera",    "icon": "cctv"           }
+  ],
+  "ambulanceTypes": [
+    { "label": "Basic",     "value": "basic",     "color": "#43A047" },
+    { "label": "Advanced",  "value": "advanced",  "color": "#1E88E5" },
+    { "label": "ICU",       "value": "icu",       "color": "#E53935" },
+    { "label": "Neonatal",  "value": "neonatal",  "color": "#8E24AA" }
+  ],
+  "ambulanceTypesList": ["basic", "advanced", "icu", "neonatal"],
+  "specializations": ["accident", "cardiac", "respiratory", "trauma", "maternity", "general", "other"],
+  "bookingStatus": {
+    "pending":     { "label": "Pending",     "color": "#FF8F00", "bg": "#FFF8E1" },
+    "confirmed":   { "label": "Confirmed",   "color": "#2E7D32", "bg": "#E8F5E9" },
+    "in_progress": { "label": "In Progress", "color": "#1565C0", "bg": "#E3F2FD" },
+    "completed":   { "label": "Completed",   "color": "#546E7A", "bg": "#ECEFF1" },
+    "cancelled":   { "label": "Cancelled",   "color": "#757575", "bg": "#F5F5F5" },
+    "rejected":    { "label": "Rejected",    "color": "#B71C1C", "bg": "#FFEBEE" }
+  },
+  "paymentMethods": [
+    { "label": "Cash",      "value": "cash"      },
+    { "label": "Online",    "value": "online"    },
+    { "label": "Insurance", "value": "insurance" }
+  ],
+  "defaultRegion": {
+    "latitude": 12.9716,
+    "longitude": 77.5946,
+    "latitudeDelta": 0.05,
+    "longitudeDelta": 0.05
+  },
+  "emergencyConfig": {
+    "bikeAmbulanceEnabled": true,
+    "maxRegularAmbulanceETA": 10,
+    "minETAImprovement": 5,
+    "allowParallelDispatch": true,
+    "allowAutoBikeDispatch": false,
+    "bikeSearchRadius": 5000
+  }
+}
