@@ -135,10 +135,10 @@ exports.getAmbulances = async (req, res, next) => {
         longitude: Number(pickupLng),
       };
 
-      // Enrich ambulances with road-distance & traffic-aware ETA using baseLocation as authoritative routing origin
+      // Enrich ambulances with road-distance & traffic-aware ETA using the latest currentLocation as routing origin
       const enriched = await Promise.allSettled(
         ambulances.map(async (ambulance) => {
-          const coordinates = ambulance.baseLocation?.coordinates;
+          const coordinates = ambulance.currentLocation?.coordinates;
           const hasValidBase =
             Array.isArray(coordinates) &&
             coordinates.length === 2 &&
@@ -288,7 +288,7 @@ exports.getAmbulance = async (req, res, next) => {
     const pickupLatitude = Number(req.query.lat);
     const pickupLongitude = Number(req.query.lng);
 
-    const ambulanceCoordinates = ambulance.baseLocation?.coordinates;
+    const ambulanceCoordinates = ambulance.currentLocation?.coordinates;
     const hasValidPickup = Number.isFinite(pickupLatitude) && Number.isFinite(pickupLongitude);
     const hasValidAmbulanceLocation = Array.isArray(ambulanceCoordinates)
       && ambulanceCoordinates.length === 2

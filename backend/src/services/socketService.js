@@ -277,9 +277,11 @@ const initializeSocket = (server) => {
         const roadTypes = ['highway', 'main_road', 'local_street'];
 
         for (const amb of availableAmbulances) {
-          const baseCoords = (amb.baseLocation?.coordinates?.length === 2 && (amb.baseLocation.coordinates[0] !== 0 || amb.baseLocation.coordinates[1] !== 0))
-            ? amb.baseLocation.coordinates
-            : amb.currentLocation?.coordinates;
+          const validCoords = (c) => c?.length === 2 && (c[0] !== 0 || c[1] !== 0);
+          // Idle ambulances stay where they last were (e.g. the drop-off), not snapped back to base.
+          const baseCoords = validCoords(amb.currentLocation?.coordinates)
+            ? amb.currentLocation.coordinates
+            : amb.baseLocation?.coordinates;
 
           if (!baseCoords || !baseCoords[0] || !baseCoords[1]) continue;
           const [baseLng, baseLat] = baseCoords;

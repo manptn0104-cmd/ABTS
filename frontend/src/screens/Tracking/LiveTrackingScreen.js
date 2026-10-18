@@ -89,6 +89,25 @@ export default function LiveTrackingScreen({ route, navigation }) {
     }
   }, [booking?.status, bookingId, dispatch]);
 
+  // Fallback while the trip is active: if live socket updates stop arriving,
+  // refresh the booking and use the ambulance's latest stored position.
+  const lastLocEventRef = useRef(0);
+  useEffect(() => {
+    if (!['confirmed', 'in_progress'].includes(booking?.status)) return undefined;
+    const id = setInterval(() => {
+      if (Date.now() - lastLocEventRef.current > 8000) {
+        dispatch(fetchBookingById(bookingId));
+      }
+    }, 5000);
+    return () => clearInterval(id);
+  }, [booking?.status, bookingId, dispatch]);
+
+  useEffect(() => {
+    if (Date.now() - lastLocEventRef.current > 8000 && bookingAmbLat != null) {
+      setAmbulanceLoc({ latitude: bookingAmbLat, longitude: bookingAmbLng });
+    }
+  }, [bookingAmbLat, bookingAmbLng]);
+
   // Set initial map region from booking pickup
   useEffect(() => {
     if (booking?.pickupLocation?.coordinates) {
@@ -119,6 +138,7 @@ export default function LiveTrackingScreen({ route, navigation }) {
     let socket;
 
      const handleAmbulanceLoc = (data) => {
+  lastLocEventRef.current = Date.now();
   const loc = {
     latitude: data.latitude,
     longitude: data.longitude,
@@ -158,6 +178,12 @@ export default function LiveTrackingScreen({ route, navigation }) {
       // Completed is a final state.
       if (data.status === 'completed') {
         dispatch(updateCurrentStatus(data.status));
+
+        // Alert buttons don't work on web, so go straight to the rating screen.
+        if (Platform.OS === 'web') {
+          navigation.replace('Feedback', { bookingId });
+          return;
+        }
 
         Alert.alert('Trip Completed', 'Your ambulance has arrived. Thank you!', [
           {
@@ -228,11 +254,15 @@ export default function LiveTrackingScreen({ route, navigation }) {
       );
     };
 
+    const rejoinRoom = () => socket?.emit('join_booking_room', bookingId);
+
     const setup = async () => {
       socket = await connect();
       if (!socket) return;
 
       socket.emit('join_booking_room', bookingId);
+      // Rooms are lost on reconnect, so rejoin to keep receiving live updates.
+      socket.on('connect', rejoinRoom);
       socket.on('ambulance_location', handleAmbulanceLoc);
       socket.on('booking_status_update', handleStatusUpdate);
       socket.on('booking_reassigned', handleBookingReassigned); // NEW
@@ -244,6 +274,7 @@ export default function LiveTrackingScreen({ route, navigation }) {
     return () => {
       if (socket) {
         socket.emit('leave_booking_room', bookingId);
+        socket.off('connect', rejoinRoom);
         socket.off('ambulance_location', handleAmbulanceLoc);
         socket.off('booking_status_update', handleStatusUpdate);
         socket.off('booking_reassigned', handleBookingReassigned); // NEW
