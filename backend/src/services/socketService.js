@@ -4,7 +4,7 @@ const Ambulance = require('../models/Ambulance');
 const Location = require('../models/Location');
 const Booking = require('../models/Booking');
 const polyline = require('@mapbox/polyline');
-const { getRoutePolyline } = require('./routingService');
+const { getRoutePolyline, getDetailedRoutePolyline } = require('./routingService');
 // Routing service & ETA utilities
 const { getRoadInfo, RoutingError } = require('../services/routingService');
 const { calculateSmartETA } = require('../utils/etaPredictor');
@@ -22,6 +22,67 @@ const MOVEMENT_THRESHOLD_M = 200; // 200 metres
 const simulatorRouteMap = new Map();
 // bookingId -> { points, currentIndex }
 // const SIMULATOR_ROUTE_INTERVAL_MS = 30 * 1000;
+
+// ── Route-following helpers (points are [lat, lng]) ──────────────────────────
+const haversineM = (a, b) => {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const h = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.min(1, Math.sqrt(h)));
+};
+
+// Compass bearing in degrees (0 = north, 90 = east).
+const bearingDeg = (a, b) => {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const y = Math.sin(toRad(b[1] - a[1])) * Math.cos(toRad(b[0]));
+  const x = Math.cos(toRad(a[0])) * Math.sin(toRad(b[0])) -
+    Math.sin(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.cos(toRad(b[1] - a[1]));
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+};
+
+const buildRouteState = (points) => {
+  const cum = [0];
+  for (let i = 1; i < points.length; i++) {
+    cum.push(cum[i - 1] + haversineM(points[i - 1], points[i]));
+  }
+  return { points, cum, total: cum[cum.length - 1], traveled: 0 };
+};
+
+// Point located `dist` metres along the route, plus the index of the segment it is on.
+const pointAt = (state, dist) => {
+  const d = Math.max(0, Math.min(state.total, dist));
+  let i = 1;
+  while (i < state.cum.length - 1 && state.cum[i] < d) i++;
+  const seg = state.cum[i] - state.cum[i - 1];
+  const t = seg > 0 ? (d - state.cum[i - 1]) / seg : 0;
+  const a = state.points[i - 1];
+  const b = state.points[i];
+  return { point: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], index: i };
+};
+
+// Route vertices between two distances, including interpolated end points.
+const sliceRoute = (state, fromDist, toDist) => {
+  const start = pointAt(state, fromDist);
+  const end = pointAt(state, toDist);
+  const out = [start.point];
+  for (let i = start.index; i < end.index; i++) out.push(state.points[i]);
+  out.push(end.point);
+  return out;
+};
+
+// Remaining route from the current position, thinned to at most `max` points.
+const remainingRoute = (state, max) => {
+  const here = pointAt(state, state.traveled);
+  const rest = [here.point, ...state.points.slice(here.index)];
+  if (rest.length <= max) return rest;
+  const stride = Math.ceil(rest.length / max);
+  const thin = rest.filter((_, i) => i % stride === 0);
+  const last = rest[rest.length - 1];
+  if (thin[thin.length - 1] !== last) thin.push(last);
+  return thin;
+};
 
 const initializeSocket = (server) => {
   io = new Server(server, {
@@ -272,10 +333,16 @@ const initializeSocket = (server) => {
         for (const booking of activeBookings) {
           const amb = booking.ambulance;
           if (!amb || !amb.currentLocation || !amb.currentLocation.coordinates) continue;
-          if (!booking.pickupLocation || !booking.pickupLocation.coordinates) continue;
+
+          // The ambulance only moves during the two driving legs of the trip.
+          const stage = booking.tripStage || (booking.status === 'in_progress' ? 'en_route_to_pickup' : 'assigned');
+          let destination;
+          if (stage === 'en_route_to_pickup') destination = booking.pickupLocation?.coordinates;
+          else if (stage === 'en_route_to_hospital') destination = booking.dropLocation?.coordinates;
+          if (!destination || destination.length < 2) continue;
 
           let [ambLng, ambLat] = amb.currentLocation.coordinates;
-          const [pickupLng, pickupLat] = booking.pickupLocation.coordinates;
+          const [pickupLng, pickupLat] = destination;
 
           // Calculate current distance to check if reached pickup
           const dLatCheck = (pickupLat - ambLat) * Math.PI / 180;
@@ -286,8 +353,8 @@ const initializeSocket = (server) => {
           const cCheck = 2 * Math.atan2(Math.sqrt(aCheck), Math.sqrt(1-aCheck));
           const currentDistanceMeters = 6371000 * cCheck;
 
-          // Stop movement simulation if ambulance is very close to pickup (< 50 meters)
-          if (currentDistanceMeters < 50) {
+          // Stop movement simulation once the ambulance has reached the destination
+          if (currentDistanceMeters < 8) {
             console.log('[TRACE LOCATION UPDATE]', {
               vehicleNumber: amb.vehicleNumber,
               oldCoordinates: amb.currentLocation?.coordinates,
@@ -299,7 +366,7 @@ const initializeSocket = (server) => {
             amb.set('motionStatus', 'at_location', { strict: false });
             await amb.save();
 
-            simulatorRouteMap.delete(booking._id.toString());
+            simulatorRouteMap.delete(`${booking._id}_${stage}`);
 
             const payload = {
               ambulanceId: amb._id,
@@ -308,6 +375,9 @@ const initializeSocket = (server) => {
               longitude: pickupLng,
               speed: 0,
               motionStatus: 'at_location',
+              stage,
+              path: [[pickupLat, pickupLng]],
+              route: [],
               trafficLevel: 'clear',
               eta: 0,
               timestamp: new Date(),
@@ -320,35 +390,33 @@ const initializeSocket = (server) => {
 
           // Move coordinates 8% closer per step (if not at destination)
 
-const bookingKey = booking._id.toString();
+const bookingKey = `${booking._id}_${stage}`;
 
 let routeState = simulatorRouteMap.get(bookingKey);
 
-// Generate the route only once
-if (!routeState) {
- const points = await getRoutePolyline(
-  { latitude: ambLat, longitude: ambLng },
-  { latitude: pickupLat, longitude: pickupLng }
-);
+          // Generate the road route once per leg (pickup / drop-off)
+          if (!routeState) {
+            const raw = await getDetailedRoutePolyline(
+              { latitude: ambLat, longitude: ambLng },
+              { latitude: pickupLat, longitude: pickupLng }
+            );
+            routeState = buildRouteState([[ambLat, ambLng], ...raw, [pickupLat, pickupLng]]);
+            simulatorRouteMap.set(bookingKey, routeState);
+          }
 
-routeState = {
-  points,
-  currentIndex: 0,
-};
-  simulatorRouteMap.set(bookingKey, routeState);
-}
+          const currentSpeed = 40 + Math.floor(Math.random() * 15);
+          // Distance covered in one 4s simulator tick at the current speed.
+          const stepMeters = (currentSpeed / 3.6) * 4;
+          const fromDist = routeState.traveled;
+          const toDist = Math.min(routeState.total, fromDist + stepMeters);
+          routeState.traveled = toDist;
 
-// Stop at the last point
-if (routeState.currentIndex >= routeState.points.length) {
-  routeState.currentIndex = routeState.points.length - 1;
-}
-
-const [newLat, newLng] =
-  routeState.points[routeState.currentIndex];
-
-routeState.currentIndex++;
-
-          const currentSpeed = 35 + Math.floor(Math.random() * 20);
+          const tickPath = sliceRoute(routeState, fromDist, toDist);
+          const [newLat, newLng] = tickPath[tickPath.length - 1];
+          const lastSeg = tickPath.length > 1
+            ? [tickPath[tickPath.length - 2], tickPath[tickPath.length - 1]]
+            : [[ambLat, ambLng], [newLat, newLng]];
+          const heading = bearingDeg(lastSeg[0], lastSeg[1]);
           const trafficLevel = Math.random() > 0.65 ? 'moderate' : 'clear';
           const motionStatus = 'moving';
           const signalsCount = 1;
@@ -367,26 +435,24 @@ routeState.currentIndex++;
           amb.set('signalsCount', signalsCount, { strict: false });
           await amb.save();
 
-          // Calculate LIVE road distance + traffic-aware ETA.
-// The ambulance position changes every 4 seconds,
-// but Google Routes is queried at most once every 30 seconds.
-const remainingPoints =
-  routeState.points.length - routeState.currentIndex;
+          // Remaining road distance and ETA from the real route length.
+const remainingMeters = Math.max(0, routeState.total - routeState.traveled);
 
-const liveEta = Math.max(
-  0,
-  Math.ceil(remainingPoints / 15)
-);
+const liveEta = Math.max(0, Math.ceil(remainingMeters / (currentSpeed / 3.6) / 60));
 
-const liveRoadDistanceKm = Number(
-  (remainingPoints * 0.04).toFixed(2)
-);
+const liveRoadDistanceKm = Number((remainingMeters / 1000).toFixed(2));
 
 const payload = {
   ambulanceId: amb._id,
   bookingId: booking._id,
   latitude: newLat,
   longitude: newLng,
+  heading,
+  // Vertices travelled during this tick; the client animates along them.
+  path: tickPath,
+  // Remaining road ahead of the vehicle (downsampled), drawn as the live route.
+  route: remainingRoute(routeState, 250),
+  stage,
   speed: currentSpeed,
   motionStatus,
   trafficLevel,
@@ -451,4 +517,59 @@ const getIO = () => {
   return io;
 };
 
-module.exports = { initializeSocket, getIO };
+// Sends the ambulance's current position (and, on driving legs, the route ahead)
+// to the booking room right after a stage change, so the tracking screen does not
+// wait for the next simulator tick.
+const emitStageLocation = async (booking) => {
+  try {
+    const amb = booking.ambulance;
+    const coords = amb?.currentLocation?.coordinates;
+    if (!coords || !io) return;
+    const [lng, lat] = coords;
+    const stage = booking.tripStage;
+
+    let destination;
+    if (stage === 'en_route_to_pickup') destination = booking.pickupLocation?.coordinates;
+    else if (stage === 'en_route_to_hospital') destination = booking.dropLocation?.coordinates;
+
+    const payload = {
+      ambulanceId: amb._id,
+      bookingId: booking._id,
+      latitude: lat,
+      longitude: lng,
+      stage,
+      path: [[lat, lng]],
+      route: [],
+      speed: 0,
+      motionStatus: 'waiting',
+      trafficLevel: 'clear',
+      eta: 0,
+      timestamp: new Date(),
+    };
+
+    if (destination && destination.length >= 2) {
+      const [dLng, dLat] = destination;
+      const bookingKey = `${booking._id}_${stage}`;
+      let routeState = simulatorRouteMap.get(bookingKey);
+      if (!routeState) {
+        const raw = await getDetailedRoutePolyline(
+          { latitude: lat, longitude: lng },
+          { latitude: dLat, longitude: dLng }
+        );
+        routeState = buildRouteState([[lat, lng], ...raw, [dLat, dLng]]);
+        simulatorRouteMap.set(bookingKey, routeState);
+      }
+      payload.route = remainingRoute(routeState, 250);
+      payload.heading = payload.route.length > 1 ? bearingDeg(payload.route[0], payload.route[1]) : 0;
+      payload.roadDistanceKm = Number(((routeState.total - routeState.traveled) / 1000).toFixed(2));
+      payload.eta = Math.max(1, Math.ceil((routeState.total - routeState.traveled) / (45 / 3.6) / 60));
+      payload.motionStatus = 'moving';
+    }
+
+    io.to(`booking_${booking._id}`).emit('ambulance_location', payload);
+  } catch (err) {
+    console.error('[emitStageLocation] failed:', err.message);
+  }
+};
+
+module.exports = { initializeSocket, getIO, emitStageLocation };

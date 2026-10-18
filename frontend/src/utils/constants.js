@@ -1,5 +1,5 @@
-export const API_BASE_URL = 'http://localhost:5001/api';
-export const SOCKET_URL = 'http://localhost:5001';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://localhost:5000/api';
+export const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL || 'http://localhost:5000';
 
 export const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -38,6 +38,30 @@ export const BOOKING_STATUS = {
   completed: { label: 'Completed', color: '#546E7A', bg: '#ECEFF1' },
   cancelled: { label: 'Cancelled', color: '#757575', bg: '#F5F5F5' },
   rejected: { label: 'Rejected', color: '#B71C1C', bg: '#FFEBEE' },
+};
+
+export const TRIP_STAGES = [
+  { key: 'assigned', label: 'Ambulance Assigned' },
+  { key: 'en_route_to_pickup', label: 'En Route to Pickup' },
+  { key: 'arrived_at_pickup', label: 'Arrived at Pickup' },
+  { key: 'patient_onboard', label: 'Patient Onboard' },
+  { key: 'en_route_to_hospital', label: 'EnRouteToDestination' },
+  { key: 'arrived_at_hospital', label: 'ArrivedAtDestination' },
+  { key: 'patient_dropped_off', label: 'Patient Dropped Off' },
+  { key: 'handover_completed', label: 'Handover Completed' },
+  { key: 'trip_completed', label: 'Trip Completed' },
+];
+
+// Driver button shown at each stage; pressing it advances to the next stage.
+export const DRIVER_STAGE_ACTIONS = {
+  assigned: '🚑 Start Pickup Journey',
+  en_route_to_pickup: '📍 Arrived at Pickup',
+  arrived_at_pickup: '✅ Confirm Patient Pickup',
+  patient_onboard: '🏥 Start Drop-off Journey',
+  en_route_to_hospital: '📍 Arrived at Destination',
+  arrived_at_hospital: '✅ Confirm Patient Drop-off',
+  patient_dropped_off: '🤝 Complete Handover',
+  handover_completed: '✔ Complete Trip',
 };
 
 export const PAYMENT_METHODS = [

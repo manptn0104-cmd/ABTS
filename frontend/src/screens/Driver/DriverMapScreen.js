@@ -10,8 +10,12 @@ import MapComponent from '../../components/MapComponent';
 export default function DriverMapScreen({ route, navigation }) {
   const { booking, ambulanceLocation } = route.params;
 
-  // Extract pickup coordinates (GeoJSON: [lng, lat])
-  const [pickupLng, pickupLat] = booking.pickupLocation?.coordinates || [0, 0];
+  // After the patient is onboard the destination switches from pickup to the hospital.
+  const toHospital = ['patient_onboard', 'en_route_to_hospital', 'arrived_at_hospital', 'patient_dropped_off', 'handover_completed']
+    .includes(booking.tripStage) && booking.dropLocation?.coordinates?.length === 2;
+  const destLocation = toHospital ? booking.dropLocation : booking.pickupLocation;
+  const [pickupLng, pickupLat] = destLocation?.coordinates || [0, 0];
+  const destLabel = toHospital ? 'Hospital' : 'Pickup';
 
   // Ambulance/driver current location
   const ambCoord = useMemo(() => {
@@ -43,7 +47,7 @@ export default function DriverMapScreen({ route, navigation }) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <MaterialCommunityIcons name="arrow-left" size={22} color={Colors.white} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Pickup Navigation</Text>
+        <Text style={styles.headerTitle}>{destLabel} Navigation</Text>
         <TouchableOpacity onPress={openNavigation} style={styles.navIconBtn}>
           <MaterialCommunityIcons name="navigation-variant" size={20} color={Colors.white} />
         </TouchableOpacity>
@@ -143,7 +147,7 @@ export default function DriverMapScreen({ route, navigation }) {
       <View style={styles.footer}>
         <TouchableOpacity style={styles.navigateBtn} onPress={openNavigation} activeOpacity={0.8}>
           <MaterialCommunityIcons name="navigation-variant" size={22} color={Colors.white} />
-          <Text style={styles.navigateBtnText}>Navigate to Pickup</Text>
+          <Text style={styles.navigateBtnText}>Navigate to {destLabel}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

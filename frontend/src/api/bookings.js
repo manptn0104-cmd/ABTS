@@ -6,5 +6,6 @@ export const fetchBooking           = (id)             => api.get(`/bookings/${i
 export const fetchAmbulanceBookings = (ambulanceId, params) => api.get(`/bookings/ambulance/${ambulanceId}`, { params });
 export const cancelBooking          = (id)             => api.put(`/bookings/${id}/cancel`);
 export const updateBookingStatus    = (id, data)       => api.put(`/bookings/${id}/status`, data);
+export const updateTripStage        = (id, stage)      => api.put(`/bookings/${id}/stage`, { stage });
 export const rateBooking            = (id, data)       => api.post(`/bookings/${id}/rate`, data);
 export const fetchLatestLocation    = (ambulanceId)    => api.get(`/tracking/${ambulanceId}/location`);

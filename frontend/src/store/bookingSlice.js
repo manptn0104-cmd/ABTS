@@ -87,6 +87,9 @@ const bookingSlice = createSlice({
     updateCurrentStatus: (s, a) => {
       if (s.current) s.current.status = a.payload;
     },
+    updateCurrentTripStage: (s, a) => {
+      if (s.current) s.current.tripStage = a.payload;
+    },
     clearError: (s) => { s.error = null; },
     updateBookingInList: (s, a) => {
       // a.payload = { bookingId, status }
@@ -126,5 +129,5 @@ const bookingSlice = createSlice({
   },
 });
 
-export const { setCurrentBooking, clearCurrent, updateCurrentStatus, updateBookingInList, clearError } = bookingSlice.actions;
+export const { setCurrentBooking, clearCurrent, updateCurrentStatus, updateCurrentTripStage, updateBookingInList, clearError } = bookingSlice.actions;
 export default bookingSlice.reducer;

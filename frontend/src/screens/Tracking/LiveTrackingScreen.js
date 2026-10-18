@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchBookingById, cancelBooking, updateCurrentStatus } from '../../store/bookingSlice';
+import { fetchBookingById, cancelBooking, updateCurrentStatus, updateCurrentTripStage } from '../../store/bookingSlice';
 import { useSocket } from '../../hooks/useSocket';
 import MapComponent from '../../components/MapComponent';
 import Card from '../../components/common/Card';
@@ -20,7 +20,7 @@ import Button from '../../components/common/Button';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { Colors, Spacing, BorderRadius, Shadow } from '../../theme';
 import { getBookingStatus, formatETA, formatDateTime } from '../../utils/helpers';
-import { BOOKING_STATUS } from '../../utils/constants';
+import { BOOKING_STATUS, TRIP_STAGES } from '../../utils/constants';
 
 const PULSE_STATUSES = ['pending', 'confirmed', 'in_progress'];
 const POLL_INTERVAL = 15000; // 15 seconds for pending bookings
@@ -37,6 +37,14 @@ export default function LiveTrackingScreen({ route, navigation }) {
   const [eta, setEta] = useState(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const pollIntervalRef = useRef(null);
+
+  // Starting position shown before the first live update arrives.
+  const bookingAmbLng = booking?.ambulance?.currentLocation?.coordinates?.[0];
+  const bookingAmbLat = booking?.ambulance?.currentLocation?.coordinates?.[1];
+  const initialAmbLoc = useMemo(
+    () => (bookingAmbLat != null ? { latitude: bookingAmbLat, longitude: bookingAmbLng } : null),
+    [bookingAmbLat, bookingAmbLng]
+  );
 
   // Fetch booking data
   useEffect(() => {
@@ -114,6 +122,9 @@ export default function LiveTrackingScreen({ route, navigation }) {
   const loc = {
     latitude: data.latitude,
     longitude: data.longitude,
+    heading: data.heading,
+    path: data.path,
+    route: data.route,
   };
 
   // Update ambulance position and live ETA from backend.
@@ -141,6 +152,8 @@ export default function LiveTrackingScreen({ route, navigation }) {
 
     const handleStatusUpdate = (data) => {
       console.log('[LiveTracking] booking_status_update:', data);
+
+      if (data.tripStage) dispatch(updateCurrentTripStage(data.tripStage));
 
       // Completed is a final state.
       if (data.status === 'completed') {
@@ -264,18 +277,26 @@ export default function LiveTrackingScreen({ route, navigation }) {
   const statusConfig = getBookingStatus(booking.status);
   const [pickupLng, pickupLat] = booking.pickupLocation?.coordinates ?? [0, 0];
 
+  // After the patient is onboard the map destination switches from pickup to drop-off.
+  const toDestination = ['patient_onboard', 'en_route_to_hospital', 'arrived_at_hospital', 'patient_dropped_off', 'handover_completed', 'trip_completed']
+    .includes(booking.tripStage) && booking.dropLocation?.coordinates?.length === 2;
+  const [destLng, destLat] = toDestination ? booking.dropLocation.coordinates : [pickupLng, pickupLat];
+  const mapAmbulance = ambulanceLoc || initialAmbLoc;
+
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       {/* Map */}
       <View style={styles.mapContainer}>
         <MapComponent
           region={mapRegion}
-          userLocation={{ latitude: pickupLat, longitude: pickupLng }}
-          ambulanceLocation={ambulanceLoc}
+          userLocation={{ latitude: destLat, longitude: destLng }}
+          destinationEmoji={toDestination ? '🏥' : '📍'}
+          destinationTitle={toDestination ? 'Destination' : 'Pickup Location'}
+          ambulanceLocation={mapAmbulance}
           style={styles.map}
           routeCoords={
-            ambulanceLoc
-              ? [ambulanceLoc, { latitude: pickupLat, longitude: pickupLng }]
+            mapAmbulance
+              ? [mapAmbulance, { latitude: destLat, longitude: destLng }]
               : []
           }
         />
@@ -307,13 +328,13 @@ export default function LiveTrackingScreen({ route, navigation }) {
             <Text style={styles.sheetTitle}>Booking #{booking._id?.slice(-6).toUpperCase()}</Text>
             <Text style={styles.sheetTime}>{formatDateTime(booking.createdAt)}</Text>
           </View>
-          {eta && (
+          {eta > 0 ? (
             <View style={styles.etaBox}>
               <MaterialCommunityIcons name="clock-fast" size={18} color={Colors.secondary} />
               <Text style={styles.etaText}>{formatETA(eta)}</Text>
               <Text style={styles.etaLabel}>ETA</Text>
             </View>
-          )}
+          ) : null}
         </View>
 
         {/* Driver info */}
@@ -341,6 +362,27 @@ export default function LiveTrackingScreen({ route, navigation }) {
         </View>
 
         {/* Status timeline */}
+        {['confirmed', 'in_progress', 'completed'].includes(booking.status) ? (
+          <View style={styles.stageList}>
+            {(() => {
+              const currentKey = booking.tripStage || (booking.status === 'in_progress' ? 'en_route_to_pickup' : 'assigned');
+              const currentIdx = TRIP_STAGES.findIndex((s) => s.key === currentKey);
+              return TRIP_STAGES.map((s, i) => {
+                const isDone = i <= currentIdx;
+                return (
+                  <View key={s.key} style={styles.stageRow}>
+                    <View style={[styles.timelineDot, isDone && { backgroundColor: Colors.success }]}>
+                      {isDone && <MaterialCommunityIcons name="check" size={12} color={Colors.white} />}
+                    </View>
+                    <Text style={[styles.stageLabel, isDone && styles.timelineLabelDone, i === currentIdx && { fontWeight: '800' }]}>
+                      {s.label}
+                    </Text>
+                  </View>
+                );
+              });
+            })()}
+          </View>
+        ) : (
         <View style={styles.timeline}>
           {['pending', 'confirmed', 'in_progress', 'completed'].map((s, i) => {
             const statuses = ['pending', 'confirmed', 'in_progress', 'completed'];
@@ -358,6 +400,7 @@ export default function LiveTrackingScreen({ route, navigation }) {
             );
           })}
         </View>
+        )}
 
         {/* Cancel button — only for pending/confirmed */}
         {['pending', 'confirmed'].includes(booking.status) && (
@@ -452,6 +495,9 @@ const styles = StyleSheet.create({
   locationRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: Spacing.md },
   locationText: { flex: 1, fontSize: 13, color: Colors.textSecondary },
   timeline: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: Spacing.md },
+  stageList: { marginBottom: Spacing.md },
+  stageRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
+  stageLabel: { fontSize: 13, color: Colors.textMuted, marginLeft: 10 },
   timelineItem: { flex: 1, alignItems: 'center' },
   timelineDot: {
     width: 20, height: 20, borderRadius: 10,

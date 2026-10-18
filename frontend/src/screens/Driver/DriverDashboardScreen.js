@@ -8,7 +8,8 @@ import { useSelector } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { Colors, Spacing, BorderRadius, Shadow } from '../../theme';
 import { fetchMyAmbulance } from '../../api/ambulances';
-import { fetchAmbulanceBookings, updateBookingStatus } from '../../api/bookings';
+import { fetchAmbulanceBookings, updateBookingStatus, updateTripStage } from '../../api/bookings';
+import { TRIP_STAGES, DRIVER_STAGE_ACTIONS } from '../../utils/constants';
 import { useSocket } from '../../hooks/useSocket';
 
 const STATUS_COLOR = {
@@ -103,7 +104,9 @@ if (activeBooking) {
       const handleStatusUpdate = (data) => {
         if (!mounted) return;
         setBookings((prev) =>
-          prev.map((b) => b._id === data.bookingId ? { ...b, status: data.status } : b)
+          prev.map((b) => b._id === data.bookingId
+            ? { ...b, status: data.status, ...(data.tripStage ? { tripStage: data.tripStage } : {}) }
+            : b)
         );
       };
 
@@ -159,6 +162,18 @@ if (status === 'in_progress') {
     }
   };
 
+  const handleStageAction = async (bookingId) => {
+    setActioningId(bookingId);
+    try {
+      await updateTripStage(bookingId);
+      await loadData();
+    } catch (e) {
+      Alert.alert('Error', e?.response?.data?.message || 'Action failed.');
+    } finally {
+      setActioningId(null);
+    }
+  };
+
   const renderActionButtons = (booking) => {
     if (booking.status === 'pending') {
       return (
@@ -184,42 +199,32 @@ if (status === 'in_progress') {
       );
     }
 
-    if (booking.status === 'confirmed') {
+    if (booking.status === 'confirmed' || booking.status === 'in_progress') {
+      const stage = booking.tripStage || (booking.status === 'in_progress' ? 'en_route_to_pickup' : 'assigned');
+      const label = DRIVER_STAGE_ACTIONS[stage];
+      if (!label) return null;
+      const busy = actioningId === booking._id;
+      const isFinal = stage === 'handover_completed';
       return (
-        <TouchableOpacity
-          style={[styles.actionBtn, styles.startBtn, { alignSelf: 'flex-start' }]}
-          onPress={() => handleAction(booking._id, 'in_progress')}
-          disabled={actioningId === booking._id}
-        >
-          {actioningId === booking._id
-            ? <ActivityIndicator color={Colors.white} size="small" />
-            : <Text style={styles.actionBtnText}>🚑 Start Trip</Text>
-          }
-        </TouchableOpacity>
-      );
-    }
-
-    if (booking.status === 'in_progress') {
-      return (
-        <TouchableOpacity
-  style={[
-    styles.actionBtn,
-    styles.completeBtn,
-    { alignSelf: 'flex-start' },
-    !canCompleteTrip && styles.completeBtnDisabled,
-  ]}
-  onPress={() => handleAction(booking._id, 'completed')}
-  disabled={actioningId === booking._id || !canCompleteTrip}
->
-          {actioningId === booking._id
-            ? <ActivityIndicator color={Colors.white} size="small" />
-            :<Text style={styles.actionBtnText}>
-  {canCompleteTrip
-    ? '✔ Complete Trip'
-    : `ETA: ${liveEta ?? '--'} min`}
-</Text>
-          }
-        </TouchableOpacity>
+        <View>
+          <Text style={styles.label}>
+            Current stage: {TRIP_STAGES.find((s) => s.key === stage)?.label}
+          </Text>
+          <TouchableOpacity
+            style={[
+              styles.actionBtn,
+              isFinal ? styles.completeBtn : styles.startBtn,
+              { alignSelf: 'flex-start' },
+            ]}
+            onPress={() => handleStageAction(booking._id)}
+            disabled={busy}
+          >
+            {busy
+              ? <ActivityIndicator color={Colors.white} size="small" />
+              : <Text style={styles.actionBtnText}>{label}</Text>
+            }
+          </TouchableOpacity>
+        </View>
       );
     }
 
@@ -319,21 +324,6 @@ if (status === 'in_progress') {
         <Text style={styles.fareLabel}>Fare</Text>
         <Text style={styles.fareValue}>₹{item.fare?.total?.toFixed(0) || 0}</Text>
       </View>
-
-      {/* Navigate to Pickup button — for active bookings */}
-      {['pending', 'confirmed', 'in_progress'].includes(item.status) && (
-        <TouchableOpacity
-          style={styles.navigateBtn}
-          onPress={() => navigation.navigate('DriverMap', {
-            booking: item,
-            ambulanceLocation: ambulance?.currentLocation,
-          })}
-          activeOpacity={0.75}
-        >
-          <MaterialCommunityIcons name="map-marker-radius" size={16} color={Colors.white} />
-          <Text style={styles.navigateBtnText}>📍 Navigate to Pickup</Text>
-        </TouchableOpacity>
-      )}
 
       {/* Action buttons */}
       {renderActionButtons(item)}

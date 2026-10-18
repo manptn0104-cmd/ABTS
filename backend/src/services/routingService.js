@@ -442,6 +442,36 @@ async function getRoutePolyline(origin, destination) {
 return polyline.decode(encoded);
 }
 
+// Full-resolution road geometry built from per-step polylines (the overview
+// polyline is simplified and cuts corners), as [lat, lng] pairs.
+async function getDetailedRoutePolyline(origin, destination) {
+  validateLatLng(origin, 'Origin');
+  validateLatLng(destination, 'Destination');
+
+  const url =
+    `https://maps.googleapis.com/maps/api/directions/json?` +
+    `origin=${origin.latitude},${origin.longitude}` +
+    `&destination=${destination.latitude},${destination.longitude}` +
+    `&mode=driving&key=${API_KEY}`;
+
+  const response = await fetch(url);
+  const data = await response.json();
+
+  if (!data.routes || data.routes.length === 0) {
+    throw new RoutingError('No driving route found', 404);
+  }
+
+  const steps = data.routes[0].legs.flatMap((leg) => leg.steps);
+  const points = [];
+  steps.forEach((step) => {
+    polyline.decode(step.polyline.points).forEach((p) => {
+      const last = points[points.length - 1];
+      if (!last || last[0] !== p[0] || last[1] !== p[1]) points.push(p);
+    });
+  });
+  return points;
+}
+
 // ============================================================
 // EXPORT
 // ============================================================
@@ -449,5 +479,6 @@ return polyline.decode(encoded);
 module.exports = {
   getRoadInfo,
   getRoutePolyline,
+  getDetailedRoutePolyline,
   RoutingError,
 };

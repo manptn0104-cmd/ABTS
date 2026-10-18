@@ -1,20 +1,11 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text } from 'react-native';
-import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
+import { loadGoogleMapsLibrary } from '../utils/googleMapsLoader';
 
-// Module‑level promise to ensure the Google Maps script is loaded only once
-let googleMapsPromise = null;
+// Loads the Maps JS library (shared loader also used by the Places Autocomplete
+// utility, so the Google Maps script tag is only ever injected once for the app).
 function loadGoogleMaps() {
-  if (!googleMapsPromise) {
-    // Configure the loader options (key, version, etc.)
-    setOptions({
-      key: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
-      v: 'weekly',
-    });
-    // Import the Maps library – this returns a promise that resolves when the script is ready
-    googleMapsPromise = importLibrary('maps');
-  }
-  return googleMapsPromise;
+  return loadGoogleMapsLibrary('maps');
 }
 
 export default function MapComponent({
@@ -22,6 +13,8 @@ export default function MapComponent({
   userLocation,
   ambulanceLocation,
   ambulances = [],
+  destinationEmoji = '📍',
+  destinationTitle = 'Pickup Location',
   style,
 }) {
   const mapDivRef = useRef(null);
@@ -32,12 +25,18 @@ export default function MapComponent({
     list: {}, // keyed by ambulance _id
   });
   const routeRef = useRef(null);
+  const animRef = useRef(null);
+  const headingRef = useRef(0);
+  const lastTickRef = useRef(0);
+  const iconCacheRef = useRef({});
   // Sequence counter ensuring only the newest OSRM route response is applied
   const routeSeqRef = useRef(0);
   // Track whether initial viewport has been set and previous ambulance ID for reassignment detection
   const hasInitializedViewportRef = useRef(false);
   const prevAmbulanceIdRef = useRef(null);
+  const prevDestKeyRef = useRef(null);
   const [loading, setLoading] = useState(true);
+  const [mapReady, setMapReady] = useState(false);
   const [error, setError] = useState(null);
 
   // Initialise Google Map – runs once per component instance
@@ -66,6 +65,7 @@ export default function MapComponent({
           streetViewControl: false,
         });
         mapRef.current = map;
+        setMapReady(true);
         setLoading(false);
       })
       .catch((e) => {
@@ -79,6 +79,7 @@ export default function MapComponent({
     // Cleanup on unmount
     return () => {
       cancelled = true;
+      if (animRef.current) cancelAnimationFrame(animRef.current);
       if (routeRef.current) {
         routeRef.current.setMap(null);
         routeRef.current = null;
@@ -117,6 +118,121 @@ export default function MapComponent({
   });
 };
 
+  // Top-down ambulance icon rotated to the direction of travel (0° = north).
+  const ambulanceIcon = (heading) => {
+    const deg = Math.round(heading / 6) * 6 % 360;
+    if (!iconCacheRef.current[deg]) {
+      const svg =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">' +
+        `<g transform="rotate(${deg} 32 32)">` +
+        '<ellipse cx="32" cy="34" rx="15" ry="27" fill="rgba(0,0,0,0.18)"/>' +
+        '<rect x="22" y="7" width="20" height="50" rx="7" fill="#FFFFFF" stroke="#37474F" stroke-width="2"/>' +
+        '<rect x="24.5" y="11" width="15" height="9" rx="2.5" fill="#64B5F6" stroke="#37474F" stroke-width="1"/>' +
+        '<rect x="24.5" y="23" width="6.5" height="3.5" rx="1" fill="#E53935"/>' +
+        '<rect x="33" y="23" width="6.5" height="3.5" rx="1" fill="#1E88E5"/>' +
+        '<rect x="30" y="31" width="4" height="15" fill="#E53935"/>' +
+        '<rect x="26.5" y="36.5" width="11" height="4" fill="#E53935"/>' +
+        '<rect x="24.5" y="52" width="15" height="3" rx="1" fill="#B0BEC5"/>' +
+        '</g></svg>';
+      iconCacheRef.current[deg] = {
+        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+        scaledSize: new window.google.maps.Size(48, 48),
+        anchor: new window.google.maps.Point(24, 24),
+      };
+    }
+    return iconCacheRef.current[deg];
+  };
+
+  const bearing = (a, b) => {
+    const toRad = (d) => (d * Math.PI) / 180;
+    const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat));
+    const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) -
+      Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng));
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+  };
+
+  const metres = (a, b) => {
+    const dy = (b.lat - a.lat) * 111320;
+    const dx = (b.lng - a.lng) * 111320 * Math.cos((a.lat * Math.PI) / 180);
+    return Math.hypot(dx, dy);
+  };
+
+  const setRouteLine = (pts) => {
+    if (!routeRef.current) {
+      routeRef.current = new window.google.maps.Polyline({
+        path: pts,
+        strokeColor: '#1A73E8',
+        strokeOpacity: 0.95,
+        strokeWeight: 6,
+        map: mapRef.current,
+      });
+    } else {
+      routeRef.current.setPath(pts);
+      routeRef.current.setOptions({
+        strokeColor: '#1A73E8',
+        strokeOpacity: 0.95,
+        strokeWeight: 6,
+        strokePattern: undefined,
+      });
+    }
+  };
+
+  // Glide the marker along the road vertices travelled since the last update,
+  // rotating it to the road direction and trimming the route line behind it.
+  const animateAmbulance = (loc) => {
+    const marker = markersRef.current.ambulance;
+    if (!marker) return;
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+
+    const route = (loc.route || []).map((p) => ({ lat: p[0], lng: p[1] }));
+    const cur = marker.getPosition();
+    const from = { lat: cur.lat(), lng: cur.lng() };
+    const tail = (loc.path || []).slice(1).map((p) => ({ lat: p[0], lng: p[1] }));
+    const pts = [from, ...(tail.length ? tail : [{ lat: loc.latitude, lng: loc.longitude }])];
+
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + metres(pts[i - 1], pts[i]));
+    const total = cum[cum.length - 1];
+
+    const now = performance.now();
+    const duration = lastTickRef.current
+      ? Math.min(5000, Math.max(1000, now - lastTickRef.current))
+      : 4000;
+    lastTickRef.current = now;
+    const startTime = now;
+    let lastDraw = 0;
+
+    const frame = (ts) => {
+      const t = Math.min(1, (ts - startTime) / duration);
+      const dist = t * total;
+      let i = 1;
+      while (i < pts.length - 1 && cum[i] < dist) i++;
+      const segLen = cum[i] - cum[i - 1];
+      const k = segLen > 0 ? (dist - cum[i - 1]) / segLen : 1;
+      const a = pts[i - 1];
+      const b = pts[i];
+      const pos = { lat: a.lat + (b.lat - a.lat) * k, lng: a.lng + (b.lng - a.lng) * k };
+      marker.setPosition(pos);
+
+      // Ease the heading towards the direction of the current road segment.
+      if (segLen > 0.5) {
+        const target = bearing(a, b);
+        let diff = ((target - headingRef.current + 540) % 360) - 180;
+        headingRef.current = (headingRef.current + diff * 0.25 + 360) % 360;
+        marker.setIcon(ambulanceIcon(headingRef.current));
+      }
+
+      if (ts - lastDraw > 66 || t === 1) {
+        lastDraw = ts;
+        if (route.length) setRouteLine([pos, ...pts.slice(i), ...route.slice(1)]);
+        else if (routeRef.current) routeRef.current.setPath([]);
+      }
+
+      if (t < 1) animRef.current = requestAnimationFrame(frame);
+    };
+    animRef.current = requestAnimationFrame(frame);
+  };
+
   // Update user location marker
   useEffect(() => {
     if (!mapRef.current || !userLocation) return;
@@ -124,10 +240,12 @@ export default function MapComponent({
     if (!markersRef.current.user) {
 markersRef.current.user = createEmojiMarker(
   pos,
-  '📍',
-  'Pickup Location'
+  destinationEmoji,
+  destinationTitle
 );    } else {
       markersRef.current.user.setPosition(pos);
+      markersRef.current.user.setLabel({ text: destinationEmoji, fontSize: '28px', fontWeight: 'bold' });
+      markersRef.current.user.setTitle(destinationTitle);
     }
     // Center map on user if ambulance not yet present
     if (!markersRef.current.ambulance) {
@@ -135,43 +253,48 @@ markersRef.current.user = createEmojiMarker(
     }
     // Route recalculation is triggered solely by the ambulance-location effect,
     // so a re-created userLocation object no longer fires a duplicate request.
-  }, [userLocation]);
+  }, [userLocation, destinationEmoji, mapReady]);
 
   // Update single ambulance location marker (used for the primary ambulance display)
   useEffect(() => {
     if (!mapRef.current || !ambulanceLocation) return;
     const pos = { lat: ambulanceLocation.latitude, lng: ambulanceLocation.longitude };
+    const hasRoute = Array.isArray(ambulanceLocation.route);
+
     if (!markersRef.current.ambulance) {
-markersRef.current.ambulance = createEmojiMarker(
-  pos,
-  '🚑',
-  'Ambulance'
-);
-    } else {
-      markersRef.current.ambulance.setPosition(pos);
+      markersRef.current.ambulance = new window.google.maps.Marker({
+        position: pos,
+        map: mapRef.current,
+        title: 'Ambulance',
+        zIndex: 1000,
+        icon: ambulanceIcon(ambulanceLocation.heading || 0),
+      });
+      headingRef.current = ambulanceLocation.heading || 0;
     }
-    // After updating position, check if ambulance is near edge of viewport and pan gently if needed
-    if (mapRef.current && typeof mapRef.current.getBounds === 'function') {
-      const bounds = mapRef.current.getBounds();
-      if (bounds && typeof bounds.getNorthEast === 'function' && typeof bounds.getSouthWest === 'function') {
-        const ne = bounds.getNorthEast();
-        const sw = bounds.getSouthWest();
-        const latMargin = (ne.lat() - sw.lat()) * 0.2; // 20% margin
-        const lngMargin = (ne.lng() - sw.lng()) * 0.2;
-        const needsPan =
-          pos.lat > ne.lat() - latMargin ||
-          pos.lat < sw.lat() + latMargin ||
-          pos.lng > ne.lng() - lngMargin ||
-          pos.lng < sw.lng() + lngMargin;
-        if (needsPan) {
-          // Use panTo for a gentle transition
-          mapRef.current.panTo(pos);
-        }
+
+    // Pan gently when the ambulance is about to leave the viewport.
+    const bounds = mapRef.current.getBounds?.();
+    if (bounds) {
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
+      const latMargin = (ne.lat() - sw.lat()) * 0.2;
+      const lngMargin = (ne.lng() - sw.lng()) * 0.2;
+      if (
+        pos.lat > ne.lat() - latMargin || pos.lat < sw.lat() + latMargin ||
+        pos.lng > ne.lng() - lngMargin || pos.lng < sw.lng() + lngMargin
+      ) {
+        mapRef.current.panTo(pos);
       }
     }
-    // Recalculate the route from the SAME latest ambulance position used for the marker
-    updateRoute(pos);
-  }, [ambulanceLocation]);
+
+    if (hasRoute) {
+      animateAmbulance(ambulanceLocation);
+    } else {
+      markersRef.current.ambulance.setPosition(pos);
+      // No server route supplied: fall back to an OSRM route to the destination.
+      updateRoute(pos);
+    }
+  }, [ambulanceLocation, mapReady]);
 
   // Update an array of additional ambulance markers
   useEffect(() => {
@@ -204,7 +327,7 @@ markersRef.current.ambulance = createEmojiMarker(
         delete markersRef.current.list[id];
       }
     });
-  }, [ambulances]);
+  }, [ambulances, mapReady]);
 
   // Draw route using OSRM – latest response wins; stale responses are discarded
   const updateRoute = (ambPos = null) => {
@@ -284,8 +407,13 @@ markersRef.current.ambulance = createEmojiMarker(
     const ambMarker = markersRef.current.ambulance;
     if (!userMarker || !ambMarker) return;
     const ambId = ambulanceLocation?.id ?? ambulanceLocation?._id ?? null;
-    const needsFit = !hasInitializedViewportRef.current || ambId !== prevAmbulanceIdRef.current;
+    const destKey = userLocation ? `${userLocation.latitude},${userLocation.longitude}` : null;
+    const needsFit =
+      !hasInitializedViewportRef.current ||
+      ambId !== prevAmbulanceIdRef.current ||
+      destKey !== prevDestKeyRef.current;
     if (needsFit) {
+      prevDestKeyRef.current = destKey;
       const bounds = new window.google.maps.LatLngBounds();
       bounds.extend(userMarker.getPosition());
       bounds.extend(ambMarker.getPosition());
@@ -293,7 +421,7 @@ markersRef.current.ambulance = createEmojiMarker(
       hasInitializedViewportRef.current = true;
       prevAmbulanceIdRef.current = ambId;
     }
-  }, [userLocation, ambulanceLocation]);
+  }, [userLocation, ambulanceLocation, mapReady]);
 
   // Route updates are handled in the individual location effects; no additional effect needed
 

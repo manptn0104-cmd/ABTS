@@ -5,6 +5,7 @@ const {
   getMyBookings,
   getBooking,
   updateBookingStatus,
+  updateTripStage,
   cancelBooking,
   rateBooking,
   getAmbulanceBookings,
@@ -21,6 +22,7 @@ router.get('/debug/timeout-status', protect, authorize('admin', 'superadmin'), r
 router.get('/:id', protect, getBooking);
 router.get('/:id/reassignment-history', protect, authorize('admin', 'superadmin'), requireActiveOrganization, getReassignmentHistory);
 router.put('/:id/status', protect, authorize('driver', 'admin', 'superadmin'), requireActiveOrganization, updateBookingStatus);
+router.put('/:id/stage', protect, authorize('driver', 'admin', 'superadmin'), requireActiveOrganization, updateTripStage);
 router.put('/:id/cancel', protect, requireActiveOrganization, cancelBooking);
 router.post('/:id/rate', protect, requireActiveOrganization, rateBooking);
 router.post('/:id/manual-reassign', protect, authorize('admin', 'superadmin'), requireActiveOrganization, manualReassign);

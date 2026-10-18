@@ -12,6 +12,7 @@ import Card   from '../../components/common/Card';
 import { Colors, Spacing, BorderRadius, Typography } from '../../theme';
 import { formatCurrency, formatDistance, formatETA, getAmbulanceType, haversineDistance } from '../../utils/helpers';
 import { EMERGENCY_TYPES, PAYMENT_METHODS, FACILITIES } from '../../utils/constants';
+import { fetchPlacePredictions, fetchPlaceDetails } from '../../utils/placesAutocomplete';
 
 export default function BookingConfirmationScreen({ route, navigation }) {
   // Defensive route.params extraction with fallbacks
@@ -74,21 +75,11 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   const [showDropSug,     setShowDropSug]     = useState(false);
   const dropDebounceRef = useRef(null);
 
-  const nominatimSearch = useCallback(async (query) => {
-    // Bias results near pickup location for better local search
+  const placeAutocompleteSearch = useCallback(async (query) => {
+    // Bias results near the pickup location for better local search
     const biasLat = selectedPickup?.latitude  ?? 12.9716;
     const biasLng = selectedPickup?.longitude ?? 77.5946;
-    const viewbox = `${biasLng - 0.5},${biasLat + 0.5},${biasLng + 0.5},${biasLat - 0.5}`;
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=6&countrycodes=in&viewbox=${viewbox}&bounded=0`;
-    const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
-    const data = await res.json();
-    return data.map((r) => ({
-      label:     r.display_name,
-      shortLabel: [r.address?.road, r.address?.suburb, r.address?.city || r.address?.town || r.address?.village]
-                    .filter(Boolean).join(', ') || r.display_name,
-      lat: parseFloat(r.lat),
-      lng: parseFloat(r.lon),
-    }));
+    return fetchPlacePredictions(query, { lat: biasLat, lng: biasLng });
   }, [selectedPickup]);
 
   const nominatimReverse = useCallback(async (lat, lng) => {
@@ -105,10 +96,10 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   const fetchDropSuggestions = useCallback(async (query) => {
     if (!query || query.length < 3) { setDropSuggestions([]); return; }
     setDropSugLoading(true);
-    try { setDropSuggestions(await nominatimSearch(query)); }
+    try { setDropSuggestions(await placeAutocompleteSearch(query)); }
     catch (_) { setDropSuggestions([]); }
     finally { setDropSugLoading(false); }
-  }, [nominatimSearch]);
+  }, [placeAutocompleteSearch]);
 
   const handleDropTextChange = (text) => {
     setDropAddress(text);
@@ -117,11 +108,19 @@ export default function BookingConfirmationScreen({ route, navigation }) {
     dropDebounceRef.current = setTimeout(() => fetchDropSuggestions(text), 400);
   };
 
-  const handleSelectDropSuggestion = (s) => {
+  const handleSelectDropSuggestion = async (s) => {
+    // Reflect the chosen text & close the dropdown right away for responsive UX
     setDropAddress(s.shortLabel);
-    setDropCoords({ latitude: s.lat, longitude: s.lng });
     setDropSuggestions([]);
     setShowDropSug(false);
+    setDropSugLoading(true);
+
+    // Autocomplete predictions don't include coordinates — resolve them via Place Details
+    const details = await fetchPlaceDetails(s.placeId);
+    setDropSugLoading(false);
+    if (details) {
+      setDropCoords({ latitude: details.lat, longitude: details.lng });
+    }
   };
 
   // Clear any stale booking from previous session on mount

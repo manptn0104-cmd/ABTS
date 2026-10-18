@@ -1,7 +1,26 @@
 const Booking = require('../models/Booking');
 const Ambulance = require('../models/Ambulance');
 const User = require('../models/User');
-const { getIO } = require('../services/socketService');
+const { getIO, emitStageLocation } = require('../services/socketService');
+const { STAGE_STATUS, nextStage } = require('../utils/tripStages');
+
+const STAGE_MESSAGES = {
+  assigned: 'Ambulance assigned to your booking.',
+  en_route_to_pickup: 'The ambulance is on its way to the pickup location.',
+  arrived_at_pickup: 'The ambulance has arrived at the pickup location.',
+  patient_onboard: 'Patient is onboard.',
+  en_route_to_hospital: 'The ambulance is on its way to the destination.',
+  arrived_at_hospital: 'The ambulance has arrived at the destination.',
+  patient_dropped_off: 'Patient has been dropped off.',
+  handover_completed: 'Handover to the hospital is completed.',
+  trip_completed: 'Trip completed.',
+};
+
+const pushStage = (booking, stage) => {
+  booking.tripStage = stage;
+  booking.tripTimeline = booking.tripTimeline || [];
+  booking.tripTimeline.push({ stage, at: new Date() });
+};
 
 const getOrganizationFilter = (req) => (
   req.user.role === 'superadmin' ? {} : { organizationId: req.user.organizationId }
@@ -356,15 +375,27 @@ exports.updateBookingStatus = async (req, res, next) => {
         });
       }
     }
+    if (status === 'completed' && booking.tripStage && booking.tripStage !== 'handover_completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Complete every trip stage (through handover) before completing the trip.',
+      });
+    }
+
     booking.status = status;
     if (status === 'rejected') booking.rejectionReason = rejectionReason || 'No reason provided';
     if (status === 'confirmed') {
       booking.confirmedAt = new Date();
+      pushStage(booking, 'assigned');
       await Ambulance.findByIdAndUpdate(booking.ambulance._id, { isAvailable: false });
     }
-    if (status === 'in_progress') booking.startedAt = new Date();
+    if (status === 'in_progress') {
+      booking.startedAt = new Date();
+      pushStage(booking, 'en_route_to_pickup');
+    }
     if (status === 'completed') {
       booking.completedAt = new Date();
+      pushStage(booking, 'trip_completed');
       await Ambulance.findByIdAndUpdate(booking.ambulance._id, {
         isAvailable: true,
         $inc: { totalTrips: 1 },
@@ -390,6 +421,74 @@ exports.updateBookingStatus = async (req, res, next) => {
     io.to(`booking_${booking._id}`).emit('booking_status_update', { status, booking });
 
     res.json({ success: true, message: `Booking ${status}.`, booking });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// PUT /api/bookings/:id/stage  (driver / admin) — advances the trip to its next stage
+exports.updateTripStage = async (req, res, next) => {
+  try {
+    const booking = await Booking.findOne({ _id: req.params.id, ...getOrganizationFilter(req) }).populate('ambulance');
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+    if (req.user.role === 'driver' && !isAssignedDriver(booking, req)) {
+      return res.status(404).json({ success: false, message: 'Booking not found.' });
+    }
+    if (!['confirmed', 'in_progress'].includes(booking.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot update trip stage for a '${booking.status}' booking.`,
+      });
+    }
+
+    // Bookings confirmed before stages existed start from 'assigned'.
+    const current = booking.tripStage || 'assigned';
+    const next = nextStage(current);
+    const requested = req.body.stage;
+
+    if (!next) {
+      return res.status(400).json({ success: false, message: 'Trip is already completed.' });
+    }
+    if (requested && requested !== next) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid stage. Expected '${next}' after '${current}'.`,
+      });
+    }
+
+    if (!booking.tripStage) pushStage(booking, 'assigned');
+    pushStage(booking, next);
+    booking.status = STAGE_STATUS[next];
+
+    if (next === 'en_route_to_pickup') booking.startedAt = new Date();
+    if (next === 'trip_completed') {
+      booking.completedAt = new Date();
+      await Ambulance.findByIdAndUpdate(booking.ambulance._id, {
+        isAvailable: true,
+        $inc: { totalTrips: 1 },
+      });
+    }
+
+    await booking.save();
+
+    const payload = {
+      bookingId: booking._id,
+      status: booking.status,
+      tripStage: next,
+      message: STAGE_MESSAGES[next],
+      booking,
+    };
+    const io = getIO();
+    io.to(`user_${booking.user}`).emit('booking_status_update', payload);
+    io.to(`booking_${booking._id}`).emit('booking_status_update', payload);
+
+    // Push the ambulance position/route immediately so tracking updates without delay.
+    await emitStageLocation(booking);
+
+    res.json({ success: true, message: STAGE_MESSAGES[next], booking });
   } catch (error) {
     next(error);
   }

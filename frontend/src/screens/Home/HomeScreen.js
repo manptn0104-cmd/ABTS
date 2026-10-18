@@ -14,6 +14,7 @@ import AmbulanceCard from '../../components/AmbulanceCard';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { Colors, Spacing, Shadow, BorderRadius } from '../../theme';
 import { DEFAULT_REGION, EMERGENCY_TYPES, FACILITIES } from '../../utils/constants';
+import { fetchPlacePredictions, fetchPlaceDetails } from '../../utils/placesAutocomplete';
 
 import { useSocket } from '../../hooks/useSocket';
 
@@ -111,7 +112,7 @@ export default function HomeScreen({ navigation }) {
   // The effective location: manual selection takes priority over GPS
   const effectiveLocation = manualLocation || location;
 
-  // Fetch address suggestions from Nominatim (OpenStreetMap)
+  // Fetch address suggestions from Google Places Autocomplete
   const fetchSuggestions = useCallback(async (query) => {
     if (!query || query.length < 3) { setSuggestions([]); return; }
     setSugLoading(true);
@@ -120,17 +121,7 @@ export default function HomeScreen({ navigation }) {
       const loc = effectiveLocation || { latitude: 12.9716, longitude: 77.5946 };
       const lat = loc.coords ? loc.coords.latitude  : loc.latitude;
       const lng = loc.coords ? loc.coords.longitude : loc.longitude;
-      const viewbox = `${lng - 0.5},${lat + 0.5},${lng + 0.5},${lat - 0.5}`;
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=6&countrycodes=in&viewbox=${viewbox}&bounded=0`;
-      const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
-      const data = await res.json();
-      setSuggestions(data.map((r) => ({
-        label:     r.display_name,
-        shortLabel: [r.address?.road, r.address?.suburb, r.address?.city || r.address?.town || r.address?.village]
-                      .filter(Boolean).join(', ') || r.display_name,
-        lat: parseFloat(r.lat),
-        lng: parseFloat(r.lon),
-      })));
+      setSuggestions(await fetchPlacePredictions(query, { lat, lng }));
     } catch (_) {
       setSuggestions([]);
     } finally {
@@ -145,22 +136,30 @@ export default function HomeScreen({ navigation }) {
     debounceRef.current = setTimeout(() => fetchSuggestions(text), 400);
   };
 
-  const handleSelectSuggestion = (s) => {
-    console.log('[PICKUP DEBUG] SUGGESTION SELECTED:', s);
-    console.log('[PICKUP DEBUG] address:', s.shortLabel, 'lat:', s.lat, 'lng:', s.lng);
-    const newLoc = { latitude: s.lat, longitude: s.lng };
-    setManualLocation(newLoc); // Lock in the user's choice (GPS won't overwrite this)
+  const handleSelectSuggestion = async (s) => {
+    // Reflect the chosen text & close the dropdown right away for responsive UX
     setSearchText(s.shortLabel);
     setSuggestions([]);
     setShowSuggestions(false);
     setIsFocused(false);
+    setSugLoading(true);
+
+    // Autocomplete predictions don't include coordinates — resolve them via Place Details
+    const details = await fetchPlaceDetails(s.placeId);
+    setSugLoading(false);
+    if (!details) return;
+
+    console.log('[PICKUP DEBUG] SUGGESTION SELECTED:', s);
+    console.log('[PICKUP DEBUG] address:', s.shortLabel, 'lat:', details.lat, 'lng:', details.lng);
+    const newLoc = { latitude: details.lat, longitude: details.lng };
+    setManualLocation(newLoc); // Lock in the user's choice (GPS won't overwrite this)
     // setLocation(newLoc); // disabled: manual location should not update global GPS state
     setAddress(s.shortLabel);
-    setMapRegion({ latitude: s.lat, longitude: s.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 });
+    setMapRegion({ latitude: details.lat, longitude: details.lng, latitudeDelta: 0.02, longitudeDelta: 0.02 });
     // Fetch ambulances for the manually selected location
-    console.log('[TRACE PICKUP]', { source: 'manual', latitude: s.lat, longitude: s.lng });
+    console.log('[TRACE PICKUP]', { source: 'manual', latitude: details.lat, longitude: details.lng });
     dispatch(fetchAmbulances({
-      lat: s.lat, lng: s.lng, maxDistance: 50000, available: 'true', limit: 20,
+      lat: details.lat, lng: details.lng, maxDistance: 50000, available: 'true', limit: 20,
       facilities: selectedFacilities.length > 0 ? selectedFacilities.join(',') : undefined,
     }));
   };

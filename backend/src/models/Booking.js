@@ -23,6 +23,21 @@ const bookingSchema = new mongoose.Schema(
       enum: ['pending', 'confirmed', 'in_progress', 'completed', 'cancelled', 'rejected', 'unavailable'],
       default: 'pending',
     },
+    tripStage: {
+      type: String,
+      enum: [
+        'assigned', 'en_route_to_pickup', 'arrived_at_pickup', 'patient_onboard',
+        'en_route_to_hospital', 'arrived_at_hospital', 'patient_dropped_off',
+        'handover_completed', 'trip_completed',
+      ],
+    },
+    tripTimeline: [
+      {
+        _id: false,
+        stage: String,
+        at: { type: Date, default: Date.now },
+      },
+    ],
     pickupLocation: {
       type: {
         type: String,

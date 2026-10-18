@@ -6,6 +6,7 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Platform,
   ActivityIndicator,
   SafeAreaView,
 } from 'react-native';
@@ -69,16 +70,14 @@ export default function FeedbackScreen({ route, navigation }) {
       });
 
       if (response.data.success) {
-        Alert.alert(
-          'Thank You!',
-          'Your feedback has been submitted successfully.',
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.navigate('Home'),
-            },
-          ]
-        );
+        // Alert buttons don't fire on web, so redirect immediately.
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'MainTabs', state: { index: 0, routes: [{ name: 'Home' }] } }],
+        });
+        if (Platform.OS !== 'web') {
+          Alert.alert('Thank You!', 'Your feedback has been submitted successfully.');
+        }
       } else {
         Alert.alert('Error', response.data.message || 'Failed to submit feedback.');
       }
