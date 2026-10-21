@@ -43,6 +43,9 @@ export default function DriverDashboardScreen() {
 
   const [liveEta, setLiveEta] = useState(null);
   const [canCompleteTrip, setCanCompleteTrip] = useState(false);
+  // Keys of `${bookingId}_${stage}` that the ambulance has physically reached,
+  // used to gate the "Arrived at Pickup" / "Arrived at Destination" buttons.
+  const [arrivedStages, setArrivedStages] = useState({});
 
   const socketRef = useRef(null);
 
@@ -80,16 +83,21 @@ export default function DriverDashboardScreen() {
       if (!sock || !mounted) return;
       socketRef.current = sock;
 
-      if (ambulance) {
-        sock.emit('join_ambulance_room', ambulance._id);
-      }
-      const activeBooking = bookings.find(
-  (b) => b.status === 'confirmed' || b.status === 'in_progress'
-);
-
-if (activeBooking) {
-  sock.emit('join_booking_room', activeBooking._id);
-}
+      const joinRooms = () => {
+        if (ambulance) {
+          sock.emit('join_ambulance_room', ambulance._id);
+        }
+        const activeBooking = bookings.find(
+          (b) => b.status === 'confirmed' || b.status === 'in_progress'
+        );
+        if (activeBooking) {
+          sock.emit('join_booking_room', activeBooking._id);
+        }
+      };
+      joinRooms();
+      // Socket.io rooms are lost on every reconnect, so rejoin whenever the
+      // connection comes back (e.g. after a network blip or backgrounding).
+      sock.on('connect', joinRooms);
 
       const handleNewRequest = (data) => {
         if (!mounted) return;
@@ -121,6 +129,13 @@ if (activeBooking) {
     setLiveEta(eta);
     setCanCompleteTrip(eta <= 0);
   }
+
+  // The simulator marks `motionStatus: 'at_location'` only once the ambulance
+  // is within arrival distance of the current leg's destination.
+  if (data.motionStatus === 'at_location' && data.bookingId && data.stage) {
+    const key = `${data.bookingId}_${data.stage}`;
+    setArrivedStages((prev) => (prev[key] ? prev : { ...prev, [key]: true }));
+  }
 };
 
       sock.on('new_booking_request', handleNewRequest);
@@ -128,6 +143,7 @@ if (activeBooking) {
       sock.on('ambulance_location', handleLocationUpdate);
 
       return () => {
+        sock.off('connect', joinRooms);
         sock.off('new_booking_request', handleNewRequest);
         sock.off('booking_status_update', handleStatusUpdate);
         sock.off('ambulance_location', handleLocationUpdate);
@@ -140,6 +156,16 @@ if (activeBooking) {
       cleanup.then((fn) => fn?.());
     };
   }, [ambulance, bookings, tab, connect]);
+
+  // Fallback: if the socket misses a new request (e.g. a dropped/stale
+  // connection), periodically refresh the Requests tab so it still shows up.
+  useEffect(() => {
+    if (tab !== 'pending') return undefined;
+    const id = setInterval(() => {
+      loadData();
+    }, 15000);
+    return () => clearInterval(id);
+  }, [tab, loadData]);
 
   const handleAction = async (bookingId, status) => {
     setActioningId(bookingId);
@@ -205,6 +231,14 @@ if (status === 'in_progress') {
       if (!label) return null;
       const busy = actioningId === booking._id;
       const isFinal = stage === 'handover_completed';
+
+      // "Arrived at Pickup" / "Arrived at Destination" only unlock once the
+      // ambulance has actually reached the destination of the current leg.
+      const needsArrival = stage === 'en_route_to_pickup' || stage === 'en_route_to_hospital';
+      const hasArrived = !!arrivedStages[`${booking._id}_${stage}`];
+      const waitingForArrival = needsArrival && !hasArrived;
+      const disabled = busy || waitingForArrival;
+
       return (
         <View>
           <Text style={styles.label}>
@@ -214,16 +248,22 @@ if (status === 'in_progress') {
             style={[
               styles.actionBtn,
               isFinal ? styles.completeBtn : styles.startBtn,
+              waitingForArrival ? styles.completeBtnDisabled : null,
               { alignSelf: 'flex-start' },
             ]}
             onPress={() => handleStageAction(booking._id)}
-            disabled={busy}
+            disabled={disabled}
           >
             {busy
               ? <ActivityIndicator color={Colors.white} size="small" />
               : <Text style={styles.actionBtnText}>{label}</Text>
             }
           </TouchableOpacity>
+          {waitingForArrival ? (
+            <Text style={styles.waitingHint}>
+              ⏳ Waiting for the ambulance to reach the {stage === 'en_route_to_pickup' ? 'pickup point' : 'destination'}...
+            </Text>
+          ) : null}
         </View>
       );
     }
@@ -494,6 +534,7 @@ const styles = StyleSheet.create({
   backgroundColor: '#BDBDBD',
   opacity: 0.7,
 },
+  waitingHint: { fontSize: 12, color: Colors.textSecondary, marginTop: 6, fontStyle: 'italic' },
   actionBtnText: { fontSize: 14, fontWeight: '700', color: Colors.white },
 
   navigateBtn: {

@@ -17,11 +17,26 @@ export const useSocket = () => {
     const token = await AsyncStorage.getItem('abts_token');
     if (!token) return null;
 
+    // If reconnection attempts were previously exhausted, socket.io stops
+    // retrying on its own; nudge the existing manager instead of leaking a
+    // second socket for the same session.
+    if (socketInstance) {
+      socketInstance.connect();
+      socketRef.current = socketInstance;
+      return socketInstance;
+    }
+
     const socket = io(SOCKET_URL, {
       auth: { token },
       transports: ['websocket'],
-      reconnectionAttempts: 5,
-      reconnectionDelay: 2000,
+      // Keep retrying indefinitely (with capped backoff) instead of giving up
+      // after a handful of attempts — mobile/background network blips are
+      // common and previously left drivers permanently unable to receive
+      // live booking requests until they manually reloaded the app.
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
     });
 
     socket.on('connect', () => {
