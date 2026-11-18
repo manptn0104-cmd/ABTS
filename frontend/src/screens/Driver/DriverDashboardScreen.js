@@ -9,7 +9,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Colors, Spacing, BorderRadius, Shadow } from '../../theme';
 import { fetchMyAmbulance } from '../../api/ambulances';
 import { fetchAmbulanceBookings, updateBookingStatus, updateTripStage } from '../../api/bookings';
-import { TRIP_STAGES, DRIVER_STAGE_ACTIONS } from '../../utils/constants';
+import { TRIP_STAGES, DRIVER_STAGE_ACTIONS, getTripStagesFor, getDriverStageAction } from '../../utils/constants';
 import { useSocket } from '../../hooks/useSocket';
 
 const STATUS_COLOR = {
@@ -188,10 +188,10 @@ if (status === 'in_progress') {
     }
   };
 
-  const handleStageAction = async (bookingId) => {
+  const handleStageAction = async (bookingId, payload) => {
     setActioningId(bookingId);
     try {
-      await updateTripStage(bookingId);
+      await updateTripStage(bookingId, payload);
       await loadData();
     } catch (e) {
       Alert.alert('Error', e?.response?.data?.message || 'Action failed.');
@@ -227,10 +227,14 @@ if (status === 'in_progress') {
 
     if (booking.status === 'confirmed' || booking.status === 'in_progress') {
       const stage = booking.tripStage || (booking.status === 'in_progress' ? 'en_route_to_pickup' : 'assigned');
-      const label = DRIVER_STAGE_ACTIONS[stage];
-      if (!label) return null;
+      const isBike = booking.responseType === 'bike';
       const busy = actioningId === booking._id;
-      const isFinal = stage === 'handover_completed';
+
+      const label = getDriverStageAction(stage, booking.responseType);
+      if (!label) return null;
+      const isFinal = isBike
+        ? !['assigned', 'en_route_to_pickup', 'arrived_at_pickup'].includes(stage)
+        : stage === 'handover_completed';
 
       // "Arrived at Pickup" / "Arrived at Destination" only unlock once the
       // ambulance has actually reached the destination of the current leg.
@@ -238,11 +242,13 @@ if (status === 'in_progress') {
       const hasArrived = !!arrivedStages[`${booking._id}_${stage}`];
       const waitingForArrival = needsArrival && !hasArrived;
       const disabled = busy || waitingForArrival;
+      const stageLabel = getTripStagesFor(booking).find((s) => s.key === stage)?.label
+        || (isBike ? 'First Aid / Emergency Care Provided' : stage);
 
       return (
         <View>
           <Text style={styles.label}>
-            Current stage: {TRIP_STAGES.find((s) => s.key === stage)?.label}
+            Current stage: {stageLabel}
           </Text>
           <TouchableOpacity
             style={[
@@ -276,7 +282,7 @@ if (status === 'in_progress') {
       {/* Header */}
       <View style={styles.cardHeader}>
         <View style={styles.emergencyBadge}>
-          <MaterialCommunityIcons name="ambulance" size={14} color={Colors.white} />
+          <MaterialCommunityIcons name={item.responseType === 'bike' ? 'moped' : 'ambulance'} size={14} color={Colors.white} />
           <Text style={styles.emergencyText}>{item.emergencyType?.toUpperCase() || 'GENERAL'}</Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: STATUS_COLOR[item.status] + '22', borderColor: STATUS_COLOR[item.status] }]}>

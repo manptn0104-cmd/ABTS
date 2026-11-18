@@ -26,10 +26,50 @@ const bookingSchema = new mongoose.Schema(
     tripStage: {
       type: String,
       enum: [
-        'assigned', 'en_route_to_pickup', 'arrived_at_pickup', 'patient_onboard',
-        'en_route_to_hospital', 'arrived_at_hospital', 'patient_dropped_off',
+        // Shared by every booking up through pickup.
+        'assigned', 'en_route_to_pickup', 'arrived_at_pickup',
+        // Regular-ambulance transport leg.
+        'patient_onboard', 'en_route_to_hospital', 'arrived_at_hospital', 'patient_dropped_off',
+        // Bike-ambulance on-scene response and legacy handoff stages.
+        'patient_assessment', 'first_aid_provided',
+        'regular_ambulance_requested', 'regular_ambulance_arrived', 'patient_handover',
+        'bike_response_completed',
+        // Shared final stages.
         'handover_completed', 'trip_completed',
       ],
+    },
+    // Which workflow this booking follows (see utils/tripStages.js). Derived
+    // from the assigned ambulance's type at creation time.
+    responseType: {
+      type: String,
+      enum: ['regular', 'bike'],
+      default: 'regular',
+    },
+    // Historical fields retained for bookings created before the bike-only workflow.
+    likelyRegularAmbulanceNeeded: {
+      type: Boolean,
+      default: false,
+    },
+    // Set explicitly at the bike-response decision point: null = not yet
+    // decided, true = a regular ambulance was requested, false = the bike
+    // crew completed the response on their own.
+    regularAmbulanceRequired: {
+      type: Boolean,
+      default: null,
+    },
+    // The regular ambulance coordinated to take over transport after a bike
+    // ambulance's on-scene response (only set when regularAmbulanceRequired).
+    secondaryAmbulance: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Ambulance',
+      default: null,
+    },
+    // Snapshot of the original bike ambulance once the booking is handed off
+    // to a regular ambulance for pickup/transport (see updateTripStage).
+    firstResponderAmbulance: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Ambulance',
+      default: null,
     },
     tripTimeline: [
       {

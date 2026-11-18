@@ -26,7 +26,7 @@ const ambulanceSchema = new mongoose.Schema(
     vehicleImage: { type: String, default: null },
     type: {
       type: String,
-      enum: ['basic', 'advanced', 'icu', 'neonatal'],
+      enum: ['basic', 'advanced', 'icu', 'neonatal', 'bike'],
       default: 'basic',
     },
     facilities: {

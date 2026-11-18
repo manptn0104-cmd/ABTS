@@ -1,32 +1,41 @@
-// Ordered ambulance trip lifecycle (after the driver accepts the booking).
-const TRIP_STAGES = [
-  'assigned',
-  'en_route_to_pickup',
-  'arrived_at_pickup',
-  'patient_onboard',
-  'en_route_to_hospital',
-  'arrived_at_hospital',
-  'patient_dropped_off',
-  'handover_completed',
-  'trip_completed',
+// Regular transport and bike first-aid responses share the pickup stages.
+const SHARED_PICKUP_STAGES = ['assigned', 'en_route_to_pickup', 'arrived_at_pickup'];
+const REGULAR_STAGES_AFTER_PICKUP = [
+  'patient_onboard', 'en_route_to_hospital', 'arrived_at_hospital',
+  'patient_dropped_off', 'handover_completed', 'trip_completed',
+];
+const BIKE_STAGES_AFTER_PICKUP = ['patient_assessment', 'first_aid_provided'];
+const TRIP_STAGES = [...SHARED_PICKUP_STAGES, ...REGULAR_STAGES_AFTER_PICKUP];
+const BIKE_TRIP_STAGES = [...SHARED_PICKUP_STAGES, ...BIKE_STAGES_AFTER_PICKUP];
+
+const STAGE_STATUS = {};
+[...TRIP_STAGES, ...BIKE_TRIP_STAGES].forEach((stage) => {
+  STAGE_STATUS[stage] = stage === 'trip_completed' ? 'completed'
+    : stage === 'assigned' ? 'confirmed' : 'in_progress';
+});
+
+// Older bike responses may already be waiting at a now-removed handoff stage.
+const LEGACY_BIKE_STAGES = [
+  'first_aid_provided', 'regular_ambulance_requested', 'regular_ambulance_arrived',
+  'patient_handover', 'bike_response_completed', 'handover_completed', 'trip_completed',
 ];
 
-// Coarse booking status that corresponds to each stage.
-const STAGE_STATUS = {
-  assigned: 'confirmed',
-  en_route_to_pickup: 'in_progress',
-  arrived_at_pickup: 'in_progress',
-  patient_onboard: 'in_progress',
-  en_route_to_hospital: 'in_progress',
-  arrived_at_hospital: 'in_progress',
-  patient_dropped_off: 'in_progress',
-  handover_completed: 'in_progress',
-  trip_completed: 'completed',
+const nextStage = (booking) => {
+  if (booking.status === 'completed') return null;
+  const stage = booking.tripStage || 'assigned';
+  const isBike = booking.responseType === 'bike';
+  const pickupIdx = SHARED_PICKUP_STAGES.indexOf(stage);
+  if (pickupIdx !== -1) {
+    if (pickupIdx < SHARED_PICKUP_STAGES.length - 1) return SHARED_PICKUP_STAGES[pickupIdx + 1];
+    return isBike ? 'patient_assessment' : 'patient_onboard';
+  }
+  if (isBike) {
+    if (stage === 'patient_assessment' || LEGACY_BIKE_STAGES.includes(stage)) return 'first_aid_provided';
+    return null;
+  }
+  const idx = REGULAR_STAGES_AFTER_PICKUP.indexOf(stage);
+  return idx === -1 || idx === REGULAR_STAGES_AFTER_PICKUP.length - 1
+    ? null : REGULAR_STAGES_AFTER_PICKUP[idx + 1];
 };
 
-const nextStage = (stage) => {
-  const idx = TRIP_STAGES.indexOf(stage);
-  return idx === -1 || idx === TRIP_STAGES.length - 1 ? null : TRIP_STAGES[idx + 1];
-};
-
-module.exports = { TRIP_STAGES, STAGE_STATUS, nextStage };
+module.exports = { TRIP_STAGES, BIKE_TRIP_STAGES, SHARED_PICKUP_STAGES, STAGE_STATUS, nextStage };

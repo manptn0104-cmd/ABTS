@@ -67,8 +67,11 @@ export default function BookingConfirmationScreen({ route, navigation }) {
   const pickupAddress = searchText || 'Current Location';
   const pickupCoords = selectedPickup || null;
 
+  // Bike ambulances give on-scene first aid only, so no drop location.
+  const isBike = ambulance?.type === 'bike';
+
   // Drop location (editable)
-  const [dropAddress,    setDropAddress]    = useState('');
+  const [dropAddress,     setDropAddress]    = useState('');
   const [dropCoords,     setDropCoords]     = useState(null);
   const [dropSuggestions, setDropSuggestions] = useState([]);
   const [dropSugLoading,  setDropSugLoading]  = useState(false);
@@ -306,7 +309,7 @@ export default function BookingConfirmationScreen({ route, navigation }) {
         coordinates: [resolvedPickup.longitude, resolvedPickup.latitude],
         address: reverseGeocodedAddress || pickupAddress || 'Current Location',
       },
-      dropLocation: (dropCoords && dropAddress)
+      dropLocation: (!isBike && dropCoords && dropAddress)
         ? {
             type: 'Point',
             coordinates: [dropCoords.longitude, dropCoords.latitude],
@@ -610,11 +613,17 @@ export default function BookingConfirmationScreen({ route, navigation }) {
 
         {/* Drop Location */}
         <Card shadow="light" style={[styles.section, { zIndex: 10, overflow: 'visible' }]}>
-          <Text style={styles.sectionTitle}>Drop Location (Optional)</Text>
-          <View style={styles.dropWrapper}>
+          <Text style={styles.sectionTitle}>{isBike ? 'Drop Location (Not applicable)' : 'Drop Location (Optional)'}</Text>
+          {isBike ? (
+            <Text style={[styles.inputLabel, { marginBottom: 8 }]}>
+              Bike ambulances provide on-scene first aid only and do not transport patients.
+            </Text>
+          ) : null}
+          <View style={[styles.dropWrapper, isBike && { opacity: 0.5 }]} pointerEvents={isBike ? 'none' : 'auto'}>
             <View style={styles.dropInputRow}>
               <MaterialCommunityIcons name="hospital-marker" size={18} color={Colors.secondary} style={styles.dropIcon} />
               <TextInput
+                editable={!isBike}
                 style={styles.dropInput}
                 value={dropAddress}
                 onChangeText={handleDropTextChange}
@@ -1097,4 +1106,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

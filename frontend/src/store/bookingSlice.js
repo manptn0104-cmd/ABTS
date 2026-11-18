@@ -90,6 +90,11 @@ const bookingSlice = createSlice({
     updateCurrentTripStage: (s, a) => {
       if (s.current) s.current.tripStage = a.payload;
     },
+    // Merges fields from a fresh booking snapshot (e.g. a socket update) into
+    // the current booking without discarding anything not included.
+    mergeCurrentBooking: (s, a) => {
+      if (s.current) s.current = { ...s.current, ...a.payload };
+    },
     clearError: (s) => { s.error = null; },
     updateBookingInList: (s, a) => {
       // a.payload = { bookingId, status }
@@ -129,5 +134,5 @@ const bookingSlice = createSlice({
   },
 });
 
-export const { setCurrentBooking, clearCurrent, updateCurrentStatus, updateCurrentTripStage, updateBookingInList, clearError } = bookingSlice.actions;
+export const { setCurrentBooking, clearCurrent, updateCurrentStatus, updateCurrentTripStage, mergeCurrentBooking, updateBookingInList, clearError } = bookingSlice.actions;
 export default bookingSlice.reducer;

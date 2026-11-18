@@ -14,6 +14,13 @@ const STAGE_MESSAGES = {
   patient_dropped_off: 'Patient has been dropped off.',
   handover_completed: 'Handover to the hospital is completed.',
   trip_completed: 'Trip completed.',
+  // Bike-ambulance on-scene response stages.
+  patient_assessment: 'The bike ambulance crew is assessing the patient.',
+  first_aid_provided: 'First aid has been provided.',
+  regular_ambulance_requested: 'A regular ambulance has been requested for transport.',
+  regular_ambulance_arrived: 'The regular ambulance has arrived.',
+  patient_handover: 'Patient has been handed over to the regular ambulance.',
+  bike_response_completed: 'Bike ambulance response completed on-scene.',
 };
 
 const pushStage = (booking, stage) => {
@@ -87,12 +94,15 @@ exports.createBooking = async (req, res, next) => {
       total: ambulance.basePrice + ambulance.pricePerKm * estimatedDistance,
     };
 
+    const responseType = ambulance.type === 'bike' ? 'bike' : 'regular';
+
     const booking = await Booking.create({
       user: req.user.id,
       ambulance: ambulanceId,
       organizationId: ambulance.organizationId,
       pickupLocation,
-      dropLocation,
+      // Bike responders only give first aid on-scene; there is no drop-off.
+      dropLocation: responseType === 'bike' ? undefined : dropLocation,
       emergencyType,
       requiredFacilities,
       patientDetails,
@@ -101,6 +111,7 @@ exports.createBooking = async (req, res, next) => {
       fare,
       paymentMethod,
       patientConsent,
+      responseType,
     });
 
     await booking.populate([
@@ -153,6 +164,8 @@ exports.getMyBookings = async (req, res, next) => {
 
     const bookings = await Booking.find(query)
       .populate('ambulance', 'vehicleNumber driverName driverPhone type facilities rating')
+      .populate('secondaryAmbulance', 'vehicleNumber driverName driverPhone type')
+      .populate('firstResponderAmbulance', 'vehicleNumber driverName driverPhone type')
       .sort({ createdAt: -1 })
       .skip((Number(page) - 1) * Number(limit))
       .limit(parseInt(limit));
@@ -170,7 +183,9 @@ exports.getBooking = async (req, res, next) => {
   try {
     const booking = await Booking.findById(req.params.id)
       .populate('user', 'name phone email')
-      .populate('ambulance');
+      .populate('ambulance')
+      .populate('secondaryAmbulance', 'vehicleNumber driverName driverPhone type')
+      .populate('firstResponderAmbulance', 'vehicleNumber driverName driverPhone type');
 
     if (!booking) {
       return res.status(404).json({
@@ -375,7 +390,14 @@ exports.updateBookingStatus = async (req, res, next) => {
         });
       }
     }
-    if (status === 'completed' && booking.tripStage && booking.tripStage !== 'handover_completed') {
+    if (status === 'completed' && booking.responseType === 'bike') {
+      return res.status(400).json({
+        success: false,
+        message: 'Complete the bike response by marking first aid provided.',
+      });
+    }
+    const terminalPreCompletionStages = ['handover_completed'];
+    if (status === 'completed' && booking.tripStage && !terminalPreCompletionStages.includes(booking.tripStage)) {
       return res.status(400).json({
         success: false,
         message: 'Complete every trip stage (through handover) before completing the trip.',
@@ -400,10 +422,22 @@ exports.updateBookingStatus = async (req, res, next) => {
         isAvailable: true,
         $inc: { totalTrips: 1 },
       });
+      // Only award a separate trip if the secondary ambulance is a distinct
+      // vehicle (the bike-handoff path already points both fields at the
+      // same regular ambulance, which was just credited above).
+      if (booking.secondaryAmbulance && String(booking.secondaryAmbulance) !== String(booking.ambulance._id)) {
+        await Ambulance.findByIdAndUpdate(booking.secondaryAmbulance, {
+          isAvailable: true,
+          $inc: { totalTrips: 1 },
+        });
+      }
     }
     if (status === 'cancelled') {
       booking.cancelledAt = new Date();
       await Ambulance.findByIdAndUpdate(booking.ambulance._id, { isAvailable: true });
+      if (booking.secondaryAmbulance) {
+        await Ambulance.findByIdAndUpdate(booking.secondaryAmbulance, { isAvailable: true });
+      }
     }
 
     await booking.save();
@@ -445,8 +479,9 @@ exports.updateTripStage = async (req, res, next) => {
     }
 
     // Bookings confirmed before stages existed start from 'assigned'.
-    const current = booking.tripStage || 'assigned';
-    const next = nextStage(current);
+    if (!booking.tripStage) booking.tripStage = 'assigned';
+    const current = booking.tripStage;
+    const next = nextStage(booking);
     const requested = req.body.stage;
 
     if (!next) {
@@ -459,20 +494,29 @@ exports.updateTripStage = async (req, res, next) => {
       });
     }
 
-    if (!booking.tripStage) pushStage(booking, 'assigned');
-    pushStage(booking, next);
-    booking.status = STAGE_STATUS[next];
+    if (current !== next) pushStage(booking, next);
+    const bikeCompleted = booking.responseType === 'bike' && next === 'first_aid_provided';
+    booking.status = bikeCompleted ? 'completed' : STAGE_STATUS[next];
 
     if (next === 'en_route_to_pickup') booking.startedAt = new Date();
-    if (next === 'trip_completed') {
+
+    if (next === 'trip_completed' || bikeCompleted) {
       booking.completedAt = new Date();
       await Ambulance.findByIdAndUpdate(booking.ambulance._id, {
         isAvailable: true,
         $inc: { totalTrips: 1 },
       });
+      if (bikeCompleted && booking.secondaryAmbulance && String(booking.secondaryAmbulance) !== String(booking.ambulance._id)) {
+        await Ambulance.findByIdAndUpdate(booking.secondaryAmbulance, { isAvailable: true });
+      }
     }
 
     await booking.save();
+    await booking.populate([
+      { path: 'ambulance' },
+      { path: 'secondaryAmbulance', select: 'vehicleNumber driverName driverPhone type' },
+      { path: 'firstResponderAmbulance', select: 'vehicleNumber driverName driverPhone type' },
+    ]);
 
     const payload = {
       bookingId: booking._id,
@@ -586,6 +630,8 @@ exports.getAmbulanceBookings = async (req, res, next) => {
 
     const bookings = await Booking.find(query)
       .populate('user', 'name phone email')
+      .populate('secondaryAmbulance', 'vehicleNumber driverName driverPhone type')
+      .populate('firstResponderAmbulance', 'vehicleNumber driverName driverPhone type')
       .sort({ createdAt: -1 })
       .skip((Number(page) - 1) * Number(limit))
       .limit(parseInt(limit));

@@ -39,6 +39,12 @@ async function findNextBestAmbulance(booking, previousAmbulanceIds = []) {
     const pickupCoords = booking.pickupLocation.coordinates;
     const [pickupLng, pickupLat] = pickupCoords;
 
+    // Keep reassignment within the same response category: a bike-ambulance
+    // booking should only be reassigned to another bike ambulance (and vice
+    // versa), otherwise the booking's responseType/stage workflow would no
+    // longer match the vehicle actually assigned to it.
+    const typeFilter = booking.responseType === 'bike' ? { type: 'bike' } : { type: { $ne: 'bike' } };
+
     // Find nearby ambulances (similar to ambulance search endpoint)
     let availableAmbulances = await Ambulance.aggregate([
       {
@@ -50,6 +56,7 @@ async function findNextBestAmbulance(booking, previousAmbulanceIds = []) {
           query: {
             isAvailable: true,
             _id: { $nin: previousAmbulanceIds }, // Exclude previously assigned
+            ...typeFilter,
           },
           spherical: true,
         },

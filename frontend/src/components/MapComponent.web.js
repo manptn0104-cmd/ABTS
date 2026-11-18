@@ -12,6 +12,7 @@ export default function MapComponent({
   region,
   userLocation,
   ambulanceLocation,
+  ambulanceType,
   ambulances = [],
   destinationEmoji = '📍',
   destinationTitle = 'Pickup Location',
@@ -121,26 +122,36 @@ export default function MapComponent({
   // Top-down ambulance icon rotated to the direction of travel (0° = north).
   const ambulanceIcon = (heading) => {
     const deg = Math.round(heading / 6) * 6 % 360;
-    if (!iconCacheRef.current[deg]) {
+    const isBike = ambulanceType === 'bike';
+    const cacheKey = `${isBike ? 'bike' : 'amb'}_${deg}`;
+    if (!iconCacheRef.current[cacheKey]) {
+      const body = isBike
+        ? '<ellipse cx="32" cy="34" rx="9" ry="27" fill="rgba(0,0,0,0.18)"/>' +
+          '<rect x="28" y="5" width="8" height="15" rx="4" fill="#263238"/>' +
+          '<rect x="28" y="44" width="8" height="15" rx="4" fill="#263238"/>' +
+          '<rect x="16" y="17" width="32" height="4" rx="2" fill="#37474F"/>' +
+          '<rect x="26" y="20" width="12" height="28" rx="5" fill="#E53935" stroke="#B71C1C" stroke-width="1.5"/>' +
+          '<circle cx="32" cy="32" r="6.5" fill="#FFFFFF" stroke="#37474F" stroke-width="1.5"/>' +
+          '<rect x="30.8" y="27" width="2.4" height="10" fill="#E53935"/>' +
+          '<rect x="27" y="30.8" width="10" height="2.4" fill="#E53935"/>'
+        : '<ellipse cx="32" cy="34" rx="15" ry="27" fill="rgba(0,0,0,0.18)"/>' +
+          '<rect x="22" y="7" width="20" height="50" rx="7" fill="#FFFFFF" stroke="#37474F" stroke-width="2"/>' +
+          '<rect x="24.5" y="11" width="15" height="9" rx="2.5" fill="#64B5F6" stroke="#37474F" stroke-width="1"/>' +
+          '<rect x="24.5" y="23" width="6.5" height="3.5" rx="1" fill="#E53935"/>' +
+          '<rect x="33" y="23" width="6.5" height="3.5" rx="1" fill="#1E88E5"/>' +
+          '<rect x="30" y="31" width="4" height="15" fill="#E53935"/>' +
+          '<rect x="26.5" y="36.5" width="11" height="4" fill="#E53935"/>' +
+          '<rect x="24.5" y="52" width="15" height="3" rx="1" fill="#B0BEC5"/>';
       const svg =
         '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">' +
-        `<g transform="rotate(${deg} 32 32)">` +
-        '<ellipse cx="32" cy="34" rx="15" ry="27" fill="rgba(0,0,0,0.18)"/>' +
-        '<rect x="22" y="7" width="20" height="50" rx="7" fill="#FFFFFF" stroke="#37474F" stroke-width="2"/>' +
-        '<rect x="24.5" y="11" width="15" height="9" rx="2.5" fill="#64B5F6" stroke="#37474F" stroke-width="1"/>' +
-        '<rect x="24.5" y="23" width="6.5" height="3.5" rx="1" fill="#E53935"/>' +
-        '<rect x="33" y="23" width="6.5" height="3.5" rx="1" fill="#1E88E5"/>' +
-        '<rect x="30" y="31" width="4" height="15" fill="#E53935"/>' +
-        '<rect x="26.5" y="36.5" width="11" height="4" fill="#E53935"/>' +
-        '<rect x="24.5" y="52" width="15" height="3" rx="1" fill="#B0BEC5"/>' +
-        '</g></svg>';
-      iconCacheRef.current[deg] = {
+        `<g transform="rotate(${deg} 32 32)">` + body + '</g></svg>';
+      iconCacheRef.current[cacheKey] = {
         url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
         scaledSize: new window.google.maps.Size(48, 48),
         anchor: new window.google.maps.Point(24, 24),
       };
     }
-    return iconCacheRef.current[deg];
+    return iconCacheRef.current[cacheKey];
   };
 
   const bearing = (a, b) => {

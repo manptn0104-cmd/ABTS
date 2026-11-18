@@ -63,6 +63,17 @@ export default function AmbulanceListScreen({ route, navigation }) {
     return 0;
   });
 
+  // "Assess Location, Traffic and Severity" -> "Best Response Resource?":
+  // a lightweight client-side hint mirroring the backend's assessment, shown
+  // to help the patient choose — the actual pick is still theirs to make.
+  const recommendation = (() => {
+    if (!emergencyType) return null;
+    const distanceOf = (a) => a.roadDistanceKm ?? a.distanceKm;
+    const nearestBike = sortedList.find((a) => a.type === 'bike' && distanceOf(a) != null && distanceOf(a) <= 10);
+    if (!nearestBike) return null;
+    return '🏍️ A nearby bike ambulance can provide first aid on scene; it does not transport patients.';
+  })();
+
   const renderHeader = () => (
     <View>
       {/* Result count */}
@@ -72,6 +83,12 @@ export default function AmbulanceListScreen({ route, navigation }) {
           {selectedPickup ? ' nearby' : ''}
         </Text>
       </View>
+
+      {recommendation ? (
+        <View style={styles.recommendationBanner}>
+          <Text style={styles.recommendationText}>{recommendation}</Text>
+        </View>
+      ) : null}
 
       {/* Sort chips */}
       <View style={styles.sortRow}>
@@ -211,6 +228,15 @@ const styles = StyleSheet.create({
   listContent: { padding: Spacing.md, paddingBottom: 32 },
   resultRow: { marginBottom: Spacing.sm },
   resultText: { fontSize: 13, color: Colors.textSecondary, fontWeight: '500' },
+  recommendationBanner: {
+    backgroundColor: '#FFF3E0',
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: '#FFCC80',
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  recommendationText: { fontSize: 13, color: '#E65100', fontWeight: '600' },
   sortRow: { flexDirection: 'row', gap: 8, marginBottom: Spacing.md },
   sortChip: {
     paddingHorizontal: 14, paddingVertical: 6,

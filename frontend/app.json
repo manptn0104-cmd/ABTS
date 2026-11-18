@@ -24,7 +24,7 @@
       ],
       "config": {
         "googleMaps": {
-          "apiKey": "YOUR_ANDROID_GOOGLE_MAPS_API_KEY"
+          "apiKey": "AIzaSyCxFnORXAt8e20GKVDMQHEW2hsOlNITK0k"
         }
       }
     },
@@ -42,7 +42,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Allow ABTS to use your location."
         }
-      ]
+      ],
+      "expo-status-bar"
     ],
     "extra": {
       "apiBaseUrl": "http://localhost:5001/api",

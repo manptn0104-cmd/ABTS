@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useDispatch, useSelector } from 'react-redux';
-import { fetchBookingById, cancelBooking, updateCurrentStatus, updateCurrentTripStage } from '../../store/bookingSlice';
+import { fetchBookingById, cancelBooking, updateCurrentStatus, updateCurrentTripStage, mergeCurrentBooking } from '../../store/bookingSlice';
 import { useSocket } from '../../hooks/useSocket';
 import MapComponent from '../../components/MapComponent';
 import Card from '../../components/common/Card';
@@ -20,7 +20,7 @@ import Button from '../../components/common/Button';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { Colors, Spacing, BorderRadius, Shadow } from '../../theme';
 import { getBookingStatus, formatETA, formatDateTime } from '../../utils/helpers';
-import { BOOKING_STATUS, TRIP_STAGES } from '../../utils/constants';
+import { BOOKING_STATUS, TRIP_STAGES, getTripStagesFor } from '../../utils/constants';
 
 const PULSE_STATUSES = ['pending', 'confirmed', 'in_progress'];
 const POLL_INTERVAL = 15000; // 15 seconds for pending bookings
@@ -117,7 +117,7 @@ export default function LiveTrackingScreen({ route, navigation }) {
         latitudeDelta: 0.02, longitudeDelta: 0.02,
       });
     }
-  }, [booking]);
+  }, [booking?.pickupLocation?.coordinates?.[0], booking?.pickupLocation?.coordinates?.[1]]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pulse animation for active statuses
   useEffect(() => {
@@ -174,6 +174,11 @@ export default function LiveTrackingScreen({ route, navigation }) {
       console.log('[LiveTracking] booking_status_update:', data);
 
       if (data.tripStage) dispatch(updateCurrentTripStage(data.tripStage));
+      // Preserve handoff details when displaying bookings created by older workflows.
+      if (data.booking) {
+        const { regularAmbulanceRequired, secondaryAmbulance, firstResponderAmbulance, responseType, ambulance } = data.booking;
+        dispatch(mergeCurrentBooking({ regularAmbulanceRequired, secondaryAmbulance, firstResponderAmbulance, responseType, ambulance }));
+      }
 
       // Completed is a final state.
       if (data.status === 'completed') {
@@ -185,7 +190,9 @@ export default function LiveTrackingScreen({ route, navigation }) {
           return;
         }
 
-        Alert.alert('Trip Completed', 'Your ambulance has arrived. Thank you!', [
+        Alert.alert('Trip Completed', data.booking?.responseType === 'bike'
+          ? 'First aid has been provided. Thank you!'
+          : 'Your ambulance has arrived. Thank you!', [
           {
             text: 'Rate Trip',
             onPress: () => navigation.replace('Feedback', { bookingId }),
@@ -301,7 +308,8 @@ export default function LiveTrackingScreen({ route, navigation }) {
     );
   };
 
-  if (isLoading || !booking) {
+  // Only block on the first load; background refreshes must not unmount the map.
+  if (!booking || (isLoading && booking._id !== bookingId)) {
     return <LoadingSpinner fullscreen message="Loading booking details…" />;
   }
 
@@ -324,6 +332,7 @@ export default function LiveTrackingScreen({ route, navigation }) {
           destinationEmoji={toDestination ? '🏥' : '📍'}
           destinationTitle={toDestination ? 'Destination' : 'Pickup Location'}
           ambulanceLocation={mapAmbulance}
+          ambulanceType={booking.ambulance?.type}
           style={styles.map}
           routeCoords={
             mapAmbulance
@@ -372,7 +381,7 @@ export default function LiveTrackingScreen({ route, navigation }) {
         <Card style={styles.driverCard} padding={false}>
           <View style={styles.driverRow}>
             <View style={styles.driverAvatar}>
-              <Text style={{ fontSize: 24 }}>🧑‍✈️</Text>
+              <Text style={{ fontSize: 24 }}>{booking.responseType === 'bike' ? '🏍️' : '🧑‍✈️'}</Text>
             </View>
             <View style={styles.driverInfo}>
               <Text style={styles.driverName}>{booking.ambulance?.driverName}</Text>
@@ -383,6 +392,42 @@ export default function LiveTrackingScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
         </Card>
+
+        {/* The bike ambulance that gave first aid before handing off to a
+            regular ambulance for pickup/transport (responseType has already
+            flipped to 'regular' by this point). */}
+        {booking.firstResponderAmbulance ? (
+          <Card style={styles.driverCard} padding={false}>
+            <View style={styles.driverRow}>
+              <View style={styles.driverAvatar}>
+                <Text style={{ fontSize: 24 }}>🏍️</Text>
+              </View>
+              <View style={styles.driverInfo}>
+                <Text style={styles.driverName}>{booking.firstResponderAmbulance?.driverName}</Text>
+                <Text style={styles.vehicleNum}>
+                  {booking.firstResponderAmbulance?.vehicleNumber} • First responder (first aid given)
+                </Text>
+              </View>
+            </View>
+          </Card>
+        ) : null}
+
+        {/* Regular ambulance coordinated after a bike-ambulance first response */}
+        {booking.responseType === 'bike' && booking.secondaryAmbulance ? (
+          <Card style={styles.driverCard} padding={false}>
+            <View style={styles.driverRow}>
+              <View style={styles.driverAvatar}>
+                <Text style={{ fontSize: 24 }}>🚑</Text>
+              </View>
+              <View style={styles.driverInfo}>
+                <Text style={styles.driverName}>{booking.secondaryAmbulance?.driverName}</Text>
+                <Text style={styles.vehicleNum}>
+                  {booking.secondaryAmbulance?.vehicleNumber} • Regular ambulance (transport)
+                </Text>
+              </View>
+            </View>
+          </Card>
+        ) : null}
 
         {/* Pickup location */}
         <View style={styles.locationRow}>
@@ -397,8 +442,12 @@ export default function LiveTrackingScreen({ route, navigation }) {
           <View style={styles.stageList}>
             {(() => {
               const currentKey = booking.tripStage || (booking.status === 'in_progress' ? 'en_route_to_pickup' : 'assigned');
-              const currentIdx = TRIP_STAGES.findIndex((s) => s.key === currentKey);
-              return TRIP_STAGES.map((s, i) => {
+              const stages = getTripStagesFor(booking);
+              const stageIndex = stages.findIndex((s) => s.key === currentKey);
+              const currentIdx = stageIndex < 0 && booking.responseType === 'bike' &&
+                (booking.status === 'completed' || booking.tripTimeline?.some((entry) => entry.stage === 'first_aid_provided'))
+                ? stages.length - 1 : stageIndex;
+              return stages.map((s, i) => {
                 const isDone = i <= currentIdx;
                 return (
                   <View key={s.key} style={styles.stageRow}>

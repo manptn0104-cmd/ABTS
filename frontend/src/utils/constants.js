@@ -29,6 +29,7 @@ export const AMBULANCE_TYPES = [
   { label: 'Advanced', value: 'advanced', color: '#1E88E5' },
   { label: 'ICU', value: 'icu', color: '#E53935' },
   { label: 'Neonatal', value: 'neonatal', color: '#8E24AA' },
+  { label: 'Bike', value: 'bike', color: '#FB8C00' },
 ];
 
 export const BOOKING_STATUS = {
@@ -52,6 +53,19 @@ export const TRIP_STAGES = [
   { key: 'trip_completed', label: 'Trip Completed' },
 ];
 
+// Bike responses end after on-scene assessment and first aid.
+const BIKE_STAGES = [
+  { key: 'request_received', label: 'Emergency Request Received' },
+  { key: 'assigned', label: 'Bike Responder Assigned' },
+  { key: 'en_route_to_pickup', label: 'Responder En Route (Live GPS & ETA)' },
+  { key: 'arrived_at_pickup', label: 'Responder Arrived' },
+  { key: 'patient_assessment', label: 'Patient Assessment Started' },
+  { key: 'first_aid_provided', label: 'First Aid / Emergency Care Provided' },
+];
+export function getTripStagesFor(booking) {
+  return booking?.responseType === 'bike' ? BIKE_STAGES : TRIP_STAGES;
+}
+
 // Driver button shown at each stage; pressing it advances to the next stage.
 export const DRIVER_STAGE_ACTIONS = {
   assigned: '🚑 Start Pickup Journey',
@@ -63,6 +77,28 @@ export const DRIVER_STAGE_ACTIONS = {
   patient_dropped_off: '🤝 Complete Handover',
   handover_completed: '✔ Complete Trip',
 };
+
+export const BIKE_STAGE_ACTIONS = {
+  assigned: '🏍️ Start Pickup Journey',
+  en_route_to_pickup: '📍 Arrived at Pickup',
+  arrived_at_pickup: '🩺 Begin Patient Assessment',
+  patient_assessment: '💉 Mark First Aid Provided & Complete Response',
+  first_aid_provided: '✔ Complete Response',
+  regular_ambulance_requested: '✔ Complete Response',
+  regular_ambulance_arrived: '✔ Complete Response',
+  patient_handover: '✔ Complete Response',
+  handover_completed: '✔ Complete Response',
+  bike_response_completed: '✔ Complete Response',
+  trip_completed: '✔ Complete Response',
+};
+
+// Resolves the right action label/map for a booking's responseType.
+export function getDriverStageAction(stage, responseType) {
+  return responseType === 'bike'
+    ? BIKE_STAGE_ACTIONS[stage]
+    : DRIVER_STAGE_ACTIONS[stage];
+}
+
 
 export const PAYMENT_METHODS = [
   { label: 'Cash', value: 'cash' },
